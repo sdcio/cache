@@ -1,0 +1,147 @@
+syntax = "proto3";
+
+import "google/protobuf/any.proto";
+
+package cache.proto;
+
+option go_package = ".;cachepb";
+
+service Cache {
+    // List cache instances
+    rpc List(ListRequest)                       returns (ListResponse);
+    // Get a single cache details
+    rpc Get(GetRequest)                         returns (GetResponse);
+    // Create a new cache instance
+    rpc Create(CreateRequest)                   returns (CreateResponse);
+    // Delete a cache instance
+    rpc Delete(DeleteRequest)                   returns (DeleteResponse);
+    // Create a Candidate
+    rpc CreateCandidate(CreateCandidateRequest) returns (CreateCandidateResponse);
+    // Clone a cache
+    rpc Clone(CloneRequest)                     returns (CloneResponse);
+    // modify a cache instance
+    rpc Modify(stream ModifyRequest)            returns (stream ModifyResponse);
+    // Read value(s) from a cache instance
+    rpc Read(ReadRequest)                returns (stream ReadRespone);
+    // GetChanges made to a candidate
+    rpc GetChanges(GetChangesRequest)           returns (stream GetChangesResponse);
+    // Discard changes made to a candidate
+    rpc Discard(DiscardRequest)                 returns (DiscardResponse);
+}
+//
+message GetRequest{
+    string name = 1;
+}
+message GetResponse{
+    string          name      = 1;
+    repeated string candidate = 2;
+}
+//
+message ListRequest{}
+message ListResponse{
+    repeated string cache = 1;
+}
+//
+message CreateRequest{
+    string name = 1;
+}
+message CreateResponse{}
+//
+message DeleteRequest{
+    string name = 1;
+}
+message DeleteResponse{}
+//
+message CloneRequest{
+    string name  = 1;
+    string cname = 2;
+}
+message CloneResponse{
+    string clone = 1;
+}
+message CreateCandidateRequest{
+    string name      = 1;
+    string candidate = 2;
+}
+message CreateCandidateResponse{
+    string name      = 1;
+    string candidate = 2;
+}
+//
+message ModifyRequest{
+    oneof request {
+        WriteValueRequest  write  = 1;
+        DeleteValueRequest delete = 2;
+    }
+}
+message ModifyResponse{
+    oneof response {
+        WriteValueResponse  write  = 1;
+        DeleteValueResponse delete = 2;
+    }
+}
+//
+message WriteValueRequest{
+    string              name  = 1;
+    repeated string     path  = 2;
+    google.protobuf.Any value = 3;
+    Store               store = 4;
+}
+message WriteValueResponse{
+    string          name  = 1;
+    repeated string path  = 2;
+    string          error = 3;
+    Store           store = 4;
+}
+//
+message ReadRequest{
+    // string                  txid  = 1;
+    string                  name  = 2;
+    repeated string         path  = 3;
+    Store                   store = 4;
+}
+message ReadRespone{
+    string              name  = 2;
+    repeated string     path  = 3;
+    google.protobuf.Any value = 4;
+    Store               store = 7;
+}
+//
+message DeleteValueRequest{
+    string                  name  = 1;
+    repeated string         path  = 2;
+    Store                   store = 3;
+}
+message DeleteValueResponse{
+    string          name  = 1;
+    repeated string path  = 2;
+    string          error = 3;
+}
+//
+message GetChangesRequest{
+    string name      = 1;
+    string candidate = 2;
+}
+message GetChangesResponse{
+    string name      = 1;
+    string candidate = 2;
+    Update update    = 3;
+    repeated string delete    = 4;
+}
+//
+message DiscardRequest{
+    string name      = 1;
+    string candidate = 2;
+}
+message DiscardResponse{}
+
+// sub messages
+message Update{
+    repeated string     path  = 2;
+    google.protobuf.Any value = 3; 
+}
+
+enum Store {
+    CONFIG      = 0;
+    STATE       = 1;
+}
