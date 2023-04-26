@@ -1,4 +1,5 @@
 bin/
-lab/
+labs/
 tests/
 proto/*proto
+cached/caches

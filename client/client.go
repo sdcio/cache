@@ -61,10 +61,13 @@ func (c *Client) Get(ctx context.Context, name string, opts ...grpc.CallOption) 
 }
 
 // Create a new cache instance
-func (c *Client) Create(ctx context.Context, name string, opts ...grpc.CallOption) error {
+func (c *Client) Create(ctx context.Context, name string, ephemeral, cached bool, opts ...grpc.CallOption) error {
 	_, err := c.client.Create(ctx,
 		&cachepb.CreateRequest{
-			Name: name},
+			Name:      name,
+			Ephemeral: ephemeral,
+			Cached:    cached,
+		},
 		opts...)
 	return err
 }

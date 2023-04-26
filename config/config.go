@@ -17,11 +17,13 @@ const (
 	defaultAddress       = ":50100"
 	defaultMaxRcvMsgSize = 4 * 1024 * 1024
 	defaultRPCTimeout    = time.Minute
+	defaultBufferSize    = 100 * 1000
+	numOfModifyWorkers   = 16
 )
 
 type Config struct {
 	GRPCServer *GRPCServer  `yaml:"grpc-server,omitempty" json:"grpc-server,omitempty"`
-	Caches     *CacheConfig `yaml:"caches,omitempty" json:"caches,omitempty"`
+	Cache      *CacheConfig `yaml:"cache,omitempty" json:"cache,omitempty"`
 	Prometheus *PromConfig  `yaml:"prometheus,omitempty" json:"prometheus,omitempty"`
 }
 
@@ -30,10 +32,14 @@ type GRPCServer struct {
 	TLS            *TLS          `yaml:"tls,omitempty" json:"tls,omitempty"`
 	MaxRecvMsgSize int           `yaml:"max-recv-msg-size,omitempty" json:"max-recv-msg-size,omitempty"`
 	RPCTimeout     time.Duration `yaml:"rpc-timeout,omitempty" json:"rpc-timeout,omitempty"`
+	BufferSize     int           `yaml:"buffer-size,omitempty" json:"buffer-size,omitempty"`
+	WriteWorkers   int           `yaml:"write-workers,omitempty" json:"write-workers,omitempty"`
 }
 
 type CacheConfig struct {
-	MaxCaches int `yaml:"max-caches,omitempty" json:"max-caches,omitempty"`
+	MaxCaches int    `yaml:"max-caches,omitempty" json:"max-caches,omitempty"`
+	StoreType string `yaml:"store-type,omitempty" json:"store-type,omitempty"`
+	Dir       string `yaml:"dir,omitempty" json:"dir,omitempty"`
 }
 
 func New(file string) (*Config, error) {
@@ -63,6 +69,15 @@ func (c *Config) validateSetDefaults() error {
 	if c.GRPCServer.RPCTimeout <= 0 {
 		c.GRPCServer.RPCTimeout = defaultRPCTimeout
 	}
+	if c.GRPCServer.BufferSize < 0 {
+		c.GRPCServer.BufferSize = defaultBufferSize
+	}
+	if c.GRPCServer.WriteWorkers <= 0 {
+		c.GRPCServer.WriteWorkers = numOfModifyWorkers
+	}
+	if c.Cache == nil {
+		c.Cache = &CacheConfig{}
+	}
 	return nil
 }
 
@@ -74,11 +89,29 @@ type TLS struct {
 	CA         string `yaml:"ca,omitempty" json:"ca,omitempty"`
 	Cert       string `yaml:"cert,omitempty" json:"cert,omitempty"`
 	Key        string `yaml:"key,omitempty" json:"key,omitempty"`
-	SkipVerify bool   `yaml:"skip-verify,omitempty" json:"skip-verify,omitempty"`
+	ClientAuth string `yaml:"client-auth,omitempty" json:"client-auth,omitempty"`
 }
 
 func (t *TLS) NewConfig(ctx context.Context) (*tls.Config, error) {
-	tlsCfg := &tls.Config{InsecureSkipVerify: t.SkipVerify}
+	tlsCfg := &tls.Config{
+		InsecureSkipVerify: false,
+	}
+
+	switch t.ClientAuth {
+	case "":
+		if t.CA != "" {
+			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+		}
+	case "request":
+		tlsCfg.ClientAuth = tls.RequestClientCert
+	case "require":
+		tlsCfg.ClientAuth = tls.RequireAnyClientCert
+	case "verify-if-given":
+		tlsCfg.ClientAuth = tls.VerifyClientCertIfGiven
+	case "require-verify":
+		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
 	if t.CA != "" {
 		ca, err := os.ReadFile(t.CA)
 		if err != nil {

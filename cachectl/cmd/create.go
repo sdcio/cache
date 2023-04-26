@@ -24,6 +24,8 @@ import (
 )
 
 var cacheName string
+var ephemeral bool
+var cached bool
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
@@ -40,7 +42,7 @@ var createCmd = &cobra.Command{
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 		defer cancel()
-		err = c.Create(ctx, cacheName)
+		err = c.Create(ctx, cacheName, ephemeral, cached)
 		if err != nil {
 			return err
 		}
@@ -51,4 +53,6 @@ var createCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(createCmd)
 	createCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
+	createCmd.Flags().BoolVarP(&ephemeral, "ephemeral", "", false, "create an ephemeral cache")
+	createCmd.Flags().BoolVarP(&cached, "cached", "", false, "create a cached cache")
 }

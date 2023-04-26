@@ -11,6 +11,7 @@ import (
 
 	"github.com/iptecharch/cache/proto/cachepb"
 	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
@@ -25,6 +26,8 @@ var numCache int64
 var numPaths int64
 var createFlag bool
 var deleteFlag bool
+var doNotWrite bool
+var periodic bool
 
 func main() {
 	pflag.StringVarP(&addr, "address", "a", "localhost:50100", "cache server address")
@@ -32,7 +35,9 @@ func main() {
 	pflag.Int64VarP(&conc, "concurrency", "", 10, "max concurrent set requests")
 	pflag.Int64VarP(&numPaths, "num-path", "", 100, "number of paths to write per cache")
 	pflag.BoolVarP(&createFlag, "create", "", false, "create caches at startup")
+	pflag.BoolVarP(&doNotWrite, "no-write", "", false, "do not write, only read")
 	pflag.BoolVarP(&deleteFlag, "delete", "", false, "delete caches at the end")
+	pflag.BoolVarP(&periodic, "periodic", "", false, "run periodically")
 	pflag.Parse()
 
 	fmt.Println("caches          :", numCache)
@@ -48,25 +53,18 @@ func main() {
 	}
 	defer cc.Close()
 	//
-	// Create
-	//
-	if createFlag {
-		runCreate(ctx, cclient)
-	}
-	//
-	// WRITE
-	//
-	runWrite(ctx, cclient)
-	//
-	// READ
-	//
-	time.Sleep(50 * time.Millisecond)
-	runRead(ctx, cclient)
-	//
-	// DELETE
-	//
-	if deleteFlag {
-		runDelete(ctx, cclient)
+	runAll(ctx, cclient, true)
+
+	if periodic {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+			case <-ticker.C:
+				runAll(ctx, cclient, false)
+			}
+		}
 	}
 }
 
@@ -97,7 +95,9 @@ func runCreate(ctx context.Context, cclient cachepb.CacheClient) {
 			defer sem.Release(1)
 			now := time.Now()
 			_, err = cclient.Create(ctx, &cachepb.CreateRequest{
-				Name: fmt.Sprintf("cache-instance-%d", i),
+				Name:      fmt.Sprintf("cache-instance-%d", i),
+				Ephemeral: false,
+				Cached:    false,
 			})
 			if err != nil {
 				fmt.Println(err)
@@ -114,13 +114,13 @@ func runCreate(ctx context.Context, cclient cachepb.CacheClient) {
 		tot += d
 		rs = append(rs, d)
 	}
-	fmt.Println("cache creation:")
+	log.Println("cache creation:")
 	sort.Slice(rs, func(i, j int) bool {
 		return rs[i] < rs[j]
 	})
-	fmt.Println("	min:", rs[0])
-	fmt.Println("	max:", rs[len(rs)-1])
-	fmt.Println("	avg:", time.Duration(int(tot)/len(rs)))
+	log.Println("	min:", rs[0])
+	log.Println("	max:", rs[len(rs)-1])
+	log.Println("	avg:", time.Duration(int(tot)/len(rs)))
 }
 
 func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
@@ -146,20 +146,23 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 			go func() {
 				// defer wg1.Done()
 				for {
-					_, err = modStream.Recv()
+					rsp, err := modStream.Recv()
 					if err != nil {
 						if strings.Contains(err.Error(), "EOF") {
 							return
 						}
-						fmt.Println("fail rcv", err)
+						log.Errorf("fail rcv: %v", err)
 						return
+					}
+					if rsp.GetWrite().GetError() != "" {
+						log.Errorf("err: %s", rsp.GetWrite().GetError())
 					}
 				}
 			}()
 			for j := int64(0); j < numPaths; j++ {
 				tv := &schemapb.TypedValue{
-					Value: &schemapb.TypedValue_IntVal{
-						IntVal: j,
+					Value: &schemapb.TypedValue_StringVal{
+						StringVal: fmt.Sprintf("ABCD%d", j),
 					},
 				}
 				b, _ := proto.Marshal(tv)
@@ -169,10 +172,10 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 							Name: fmt.Sprintf("cache-instance-%d", i),
 							Path: []string{
 								"A",
-								fmt.Sprintf("%d", i),
-								fmt.Sprintf("%d", j),
-								// fmt.Sprintf("%d", (i+1)*numCache),
-								// fmt.Sprintf("%d", (j+1)*numPaths),
+								fmt.Sprintf("ABCD%d", i),
+								fmt.Sprintf("ABCD%d", i+j),
+								fmt.Sprintf("ABCD%d", i+2*j),
+								fmt.Sprintf("ABCD%d", i+3*j),
 							},
 							Value: &anypb.Any{
 								Value: b,
@@ -180,15 +183,18 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 						},
 					},
 				})
+				// fmt.Println("sent", i, i+j)
 				if err != nil {
-					fmt.Println("fail send", err)
+					log.Error("fail send", err)
 					os.Exit(1)
 				}
 			}
 			modStream.CloseSend()
 			durs <- time.Since(now)
+			time.Sleep(1 * time.Second)
 		}(i)
 	}
+
 	wg.Wait()
 	close(durs)
 	rs := make([]time.Duration, 0)
@@ -197,13 +203,13 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 		tot += d
 		rs = append(rs, d)
 	}
-	fmt.Println("values write:")
+	log.Println("values write:")
 	sort.Slice(rs, func(i, j int) bool {
 		return rs[i] < rs[j]
 	})
-	fmt.Println("	min:", rs[0])
-	fmt.Println("	max:", rs[len(rs)-1])
-	fmt.Println("	avg:", time.Duration(int(tot)/len(rs)))
+	log.Println("	min:", rs[0])
+	log.Println("	max:", rs[len(rs)-1])
+	log.Println("	avg:", time.Duration(int(tot)/len(rs)))
 }
 
 func runRead(ctx context.Context, cclient cachepb.CacheClient) {
@@ -230,7 +236,7 @@ func runRead(ctx context.Context, cclient cachepb.CacheClient) {
 				},
 			})
 			if err != nil {
-				fmt.Println("fail read:", err)
+				log.Error("fail read:", err)
 				os.Exit(1)
 			}
 			for {
@@ -239,7 +245,7 @@ func runRead(ctx context.Context, cclient cachepb.CacheClient) {
 					if strings.Contains(err.Error(), "EOF") {
 						break
 					}
-					fmt.Println("fail rcv", err)
+					log.Error("fail rcv", err)
 					break
 				}
 			}
@@ -254,13 +260,13 @@ func runRead(ctx context.Context, cclient cachepb.CacheClient) {
 		tot += d
 		rs = append(rs, d)
 	}
-	fmt.Println("values read:")
+	log.Println("values read:")
 	sort.Slice(rs, func(i, j int) bool {
 		return rs[i] < rs[j]
 	})
-	fmt.Println("	min:", rs[0])
-	fmt.Println("	max:", rs[len(rs)-1])
-	fmt.Println("	avg:", time.Duration(int(tot)/len(rs)))
+	log.Println("	min:", rs[0])
+	log.Println("	max:", rs[len(rs)-1])
+	log.Println("	avg:", time.Duration(int(tot)/len(rs)))
 }
 
 func runDelete(ctx context.Context, cclient cachepb.CacheClient) {
@@ -295,11 +301,41 @@ func runDelete(ctx context.Context, cclient cachepb.CacheClient) {
 		tot += d
 		rs = append(rs, d)
 	}
-	fmt.Println("cache deletion:")
+	log.Println("cache deletion:")
 	sort.Slice(rs, func(i, j int) bool {
 		return rs[i] < rs[j]
 	})
-	fmt.Println("	min:", rs[0])
-	fmt.Println("	max:", rs[len(rs)-1])
-	fmt.Println("	avg:", time.Duration(int(tot)/len(rs)))
+	log.Println("	min:", rs[0])
+	log.Println("	max:", rs[len(rs)-1])
+	log.Println("	avg:", time.Duration(int(tot)/len(rs)))
+}
+
+func runAll(ctx context.Context, cclient cachepb.CacheClient, first bool) {
+	//
+	// Create
+	//
+	if createFlag && first {
+		runCreate(ctx, cclient)
+		time.Sleep(10 * time.Second)
+	}
+	//
+	// WRITE
+	//
+	if !doNotWrite {
+		log.Println("writing...")
+		runWrite(ctx, cclient)
+		log.Println("waiting 2min before reading")
+		time.Sleep(2 * time.Minute)
+	}
+	//
+	// READ
+	//
+	log.Println("reading...")
+	runRead(ctx, cclient)
+	//
+	// DELETE
+	//
+	if deleteFlag {
+		runDelete(ctx, cclient)
+	}
 }
