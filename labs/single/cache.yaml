@@ -1,11 +1,7 @@
 grpc-server:
+  #
   address: :50100
-  # TLS config
-  # tls:
-  #   ca:
-  #   cert:
-  #   key:
-  #   client-auth:
+  # 
   max-recv-msg-size: 0 # defaults to 4 * 1024 * 1024 (4MB)
   # rpc-timeout: 60s # defaults to 60s
 
@@ -18,14 +14,15 @@ grpc-server:
   # defaults to 16
   write-workers: 16
 
-cache: 
+cache:
   # persistent store type, 'badgerdb', 'boltdb' or ''
   store-type: badgerdb
   # directory to be used by the persistence store
-  dir: ./cached/caches
+  dir: /cached/caches
   # max number of caches 
   # unlimited if eq to zero or negative
-  max-caches: 0
+  max-caches: 32
+
   # TODOs
   # max-candidate-per-cache: 100
 

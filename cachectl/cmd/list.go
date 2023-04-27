@@ -18,6 +18,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/iptecharch/cache/client"
@@ -26,8 +27,9 @@ import (
 
 // listCmd represents the list command
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "list caches",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "list caches",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		c, err := client.New(&client.ClientConfig{
@@ -43,6 +45,7 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		sort.Strings(caches)
 		for _, cache := range caches {
 			fmt.Println(cache)
 		}

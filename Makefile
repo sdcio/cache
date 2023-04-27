@@ -10,9 +10,9 @@ generate:
 
 build:
 	mkdir -p bin
-	go1.19.5 build -ldflags="-s -w" -o bin/cachectl cachectl/main.go
-	go1.19.5 build -ldflags="-s -w" -o bin/cached main.go
-	go1.19.5 build -o bin/bulk tests/bulk.go
+	go build -ldflags="-s -w" -o bin/cachectl cachectl/main.go
+	go build -ldflags="-s -w" -o bin/cached main.go
+	go build -o bin/bulk tests/bulk.go
 
 docker-build:
 	docker build . -t $(IMAGE)

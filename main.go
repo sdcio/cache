@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"time"
 
-	"github.com/iptecharch/cache/cache"
 	"github.com/iptecharch/cache/config"
 	"github.com/iptecharch/cache/server"
 	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
+
+	"net/http"
+	_ "net/http/pprof"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -33,6 +36,12 @@ func main() {
 		log.SetLevel(log.TraceLevel)
 	}
 	var s *server.Server[*schemapb.TypedValue]
+
+	// TO BE REMOVED
+	go func() {
+		log.Println(http.ListenAndServe(":6060", nil))
+	}()
+	//
 START:
 	if s != nil {
 		s.Stop()
@@ -42,14 +51,14 @@ START:
 		log.Errorf("failed to read config: %v", err)
 		os.Exit(1)
 	}
+	b, _ := json.MarshalIndent(cfg, "", " ")
+	log.Infof("\n%s", string(b))
 
 	ctx := context.TODO() // TODO:
 
-	s, err = server.NewServer(ctx,
-		cfg,
-		cache.New[*schemapb.TypedValue](),
-		func() *schemapb.TypedValue { return &schemapb.TypedValue{} },
-	)
+	bfn := func() *schemapb.TypedValue { return &schemapb.TypedValue{} }
+
+	s, err = server.NewServer(ctx, cfg, bfn)
 	if err != nil {
 		log.Errorf("failed to create server: %v", err)
 		time.Sleep(time.Second)

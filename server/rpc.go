@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"strings"
 
 	"github.com/iptecharch/cache/cache"
 	"github.com/iptecharch/cache/proto/cachepb"
@@ -18,12 +18,18 @@ func (s *Server[T]) Get(ctx context.Context, req *cachepb.GetRequest) (*cachepb.
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
+	cfg, err := s.cache.GetDetails(ctx, req.GetName())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "%v", err)
+	}
 	rs, err := s.cache.Candidates(ctx, req.GetName())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 	return &cachepb.GetResponse{
 		Name:      req.GetName(),
+		Ephemeral: cfg.Ephemeral,
+		Cached:    cfg.Cached,
 		Candidate: rs,
 	}, nil
 }
@@ -65,7 +71,21 @@ func (s *Server[T]) Create(ctx context.Context, req *cachepb.CreateRequest) (*ca
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
-	err := s.cache.Create(ctx, req.GetName())
+	if strings.Contains(req.GetName(), "/") {
+		return nil, status.Errorf(codes.InvalidArgument, "`/` is not allowed in a cache name")
+	}
+	if !req.GetCached() && req.GetEphemeral() {
+		return nil, status.Errorf(codes.InvalidArgument, "a cache cannot be ephemeral and not cached")
+	}
+	cfg := &cache.CacheInstanceConfig{
+		Name:      req.GetName(),
+		StoreType: s.cfg.Cache.StoreType,
+		Ephemeral: req.GetEphemeral(),
+		Cached:    req.GetCached(),
+		Dir:       s.cfg.Cache.Dir,
+	}
+	log.Debugf("creating a cache with config %+v", cfg)
+	err := s.cache.Create(ctx, cfg)
 	return &cachepb.CreateResponse{}, err
 }
 
@@ -102,13 +122,24 @@ func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 		log.Debugf("modifyRequest: %s", req)
 		switch req := req.Request.(type) {
 		case *cachepb.ModifyRequest_Write:
-			err = s.modifyWrite(req.Write, stream)
+			if req.Write.GetName() == "" {
+				return status.Errorf(codes.InvalidArgument, "name cannot be empty")
+			}
+			if len(req.Write.GetPath()) == 0 {
+				return status.Errorf(codes.InvalidArgument, "path cannot be empty")
+			}
+			if req.Write.GetValue() == nil {
+				return status.Errorf(codes.InvalidArgument, "value cannot be nil")
+			}
 		case *cachepb.ModifyRequest_Delete:
-			err = s.modifyDelete(req.Delete, stream)
+			if req.Delete.GetName() == "" {
+				return status.Errorf(codes.InvalidArgument, "name cannot be empty")
+			}
+			if len(req.Delete.GetPath()) == 0 {
+				return status.Errorf(codes.InvalidArgument, "path cannot be empty")
+			}
 		}
-		if err != nil {
-			return err
-		}
+		s.modifyCh <- req
 	}
 }
 
@@ -216,23 +247,11 @@ OUTER:
 	return nil
 }
 
-func (s *Server[T]) modifyWrite(req *cachepb.WriteValueRequest, stream cachepb.Cache_ModifyServer) error {
-
+func (s *Server[T]) modifyWrite(req *cachepb.WriteValueRequest, _ cachepb.Cache_ModifyServer) error {
 	m := s.bfn()
 	err := proto.Unmarshal(req.GetValue().GetValue(), m)
 	if err != nil {
-		err2 := stream.Send(&cachepb.ModifyResponse{
-			Response: &cachepb.ModifyResponse_Write{
-				Write: &cachepb.WriteValueResponse{
-					Name:  req.GetName(),
-					Path:  req.GetPath(),
-					Error: fmt.Sprintf("%v", err),
-				},
-			},
-		})
-		if err2 != nil {
-			return err2
-		}
+		return err
 	}
 	var store cache.Store
 	switch req.GetStore() {
@@ -242,55 +261,18 @@ func (s *Server[T]) modifyWrite(req *cachepb.WriteValueRequest, stream cachepb.C
 		store = cache.StoreState
 	}
 
-	ctx := stream.Context()
+	// ctx := stream.Context()
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
 	err = s.cache.WriteValue(ctx, req.GetName(), store, req.GetPath(), m)
 	if err != nil {
-		err2 := stream.Send(&cachepb.ModifyResponse{
-			Response: &cachepb.ModifyResponse_Write{
-				Write: &cachepb.WriteValueResponse{
-					Name:  req.GetName(),
-					Path:  req.GetPath(),
-					Error: fmt.Sprintf("%v", err),
-				},
-			},
-		})
-		if err2 != nil {
-			return err2
-		}
+		return err
 	}
 	return nil
 }
 
-func (s *Server[T]) modifyDelete(req *cachepb.DeleteValueRequest, stream cachepb.Cache_ModifyServer) error {
+func (s *Server[T]) modifyDelete(req *cachepb.DeleteValueRequest, _ cachepb.Cache_ModifyServer) error {
 	var err error
-	if req.GetName() == "" {
-		err = stream.Send(&cachepb.ModifyResponse{
-			Response: &cachepb.ModifyResponse_Delete{
-				Delete: &cachepb.DeleteValueResponse{
-					Name:  req.GetName(),
-					Path:  req.GetPath(),
-					Error: "name cannot be empty",
-				},
-			},
-		})
-		if err != nil {
-			return err
-		}
-	}
-	if len(req.GetPath()) == 0 {
-		err = stream.Send(&cachepb.ModifyResponse{
-			Response: &cachepb.ModifyResponse_Delete{
-				Delete: &cachepb.DeleteValueResponse{
-					Name:  req.GetName(),
-					Path:  req.GetPath(),
-					Error: "path cannot be empty",
-				},
-			},
-		})
-		if err != nil {
-			return err
-		}
-	}
 	// delete value from cache
 	var store cache.Store
 	switch req.GetStore() {
@@ -300,21 +282,11 @@ func (s *Server[T]) modifyDelete(req *cachepb.DeleteValueRequest, stream cachepb
 		store = cache.StoreState
 	}
 
-	ctx := stream.Context()
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
 	err = s.cache.DeleteValue(ctx, req.GetName(), store, req.GetPath())
 	if err != nil {
-		err2 := stream.Send(&cachepb.ModifyResponse{
-			Response: &cachepb.ModifyResponse_Delete{
-				Delete: &cachepb.DeleteValueResponse{
-					Name:  req.GetName(),
-					Path:  req.GetPath(),
-					Error: fmt.Sprintf("%v", err),
-				},
-			},
-		})
-		if err2 != nil {
-			return err2
-		}
+		return err
 	}
 	return nil
 }

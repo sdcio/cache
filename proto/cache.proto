@@ -22,7 +22,7 @@ service Cache {
     // modify a cache instance
     rpc Modify(stream ModifyRequest)            returns (stream ModifyResponse);
     // Read value(s) from a cache instance
-    rpc Read(ReadRequest)                returns (stream ReadRespone);
+    rpc Read(ReadRequest)                       returns (stream ReadRespone);
     // GetChanges made to a candidate
     rpc GetChanges(GetChangesRequest)           returns (stream GetChangesResponse);
     // Discard changes made to a candidate
@@ -34,7 +34,9 @@ message GetRequest{
 }
 message GetResponse{
     string          name      = 1;
-    repeated string candidate = 2;
+    bool            ephemeral = 2;
+    bool            cached    = 3;
+    repeated string candidate = 4;
 }
 //
 message ListRequest{}
@@ -43,7 +45,9 @@ message ListResponse{
 }
 //
 message CreateRequest{
-    string name = 1;
+    string name    = 1;
+    bool ephemeral = 2;
+    bool cached    = 3;
 }
 message CreateResponse{}
 //

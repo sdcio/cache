@@ -22,7 +22,8 @@ import (
 )
 
 type Server[T proto.Message] struct {
-	cfg   *config.Config
+	cfg *config.Config
+
 	cache cache.Cache[T]
 	bfn   func() T
 	srv   *grpc.Server
@@ -31,15 +32,17 @@ type Server[T proto.Message] struct {
 	router  *mux.Router
 	httpSrv *http.Server
 	reg     *prometheus.Registry
+	//
+	modifyCh chan *cachepb.ModifyRequest
 }
 
-func NewServer[T proto.Message](ctx context.Context, cfg *config.Config, c cache.Cache[T], fn func() T) (*Server[T], error) {
+func NewServer[T proto.Message](ctx context.Context, cfg *config.Config, fn func() T) (*Server[T], error) {
 	s := &Server[T]{
-		cfg:    cfg,
-		cache:  c,
-		bfn:    fn,
-		router: mux.NewRouter(),
-		reg:    prometheus.NewRegistry(),
+		cfg:      cfg,
+		bfn:      fn,
+		router:   mux.NewRouter(),
+		reg:      prometheus.NewRegistry(),
+		modifyCh: make(chan *cachepb.ModifyRequest, cfg.GRPCServer.BufferSize),
 	}
 
 	opts := []grpc.ServerOption{
@@ -78,6 +81,14 @@ func NewServer[T proto.Message](ctx context.Context, cfg *config.Config, c cache
 }
 
 func (s *Server[T]) Start(ctx context.Context) error {
+	s.cache = cache.New(s.cfg.Cache, s.bfn)
+	if s.cfg.Cache.StoreType != "" {
+		err := s.cache.Init(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	go s.startWriteWorkers(ctx)
 	l, err := net.Listen("tcp", s.cfg.GRPCServer.Address)
 	if err != nil {
 		return err
@@ -112,6 +123,39 @@ func (s *Server[T]) ServeHTTP() {
 
 func (s *Server[T]) Stop() {
 	s.srv.Stop()
-	s.httpSrv.Shutdown(context.TODO())
-	// s.cfn()
+	if s.httpSrv != nil {
+		s.httpSrv.Shutdown(context.TODO())
+	}
+	s.cache.Close()
+}
+
+func (s *Server[T]) startWriteWorkers(ctx context.Context) {
+	for i := 0; i < s.cfg.GRPCServer.WriteWorkers; i++ {
+		go s.writeWorker(ctx)
+	}
+	<-ctx.Done()
+}
+
+func (s *Server[T]) writeWorker(ctx context.Context) {
+	var err error
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case req := <-s.modifyCh:
+			switch req := req.Request.(type) {
+			case *cachepb.ModifyRequest_Write:
+				err = s.modifyWrite(req.Write, nil)
+				if err != nil {
+					log.Errorf("failed modify write: %v", err)
+				}
+			case *cachepb.ModifyRequest_Delete:
+				err = s.modifyDelete(req.Delete, nil)
+				if err != nil {
+					log.Errorf("failed modify delete: %v", err)
+				}
+			}
+		}
+	}
+
 }

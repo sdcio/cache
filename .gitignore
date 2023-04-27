@@ -15,3 +15,6 @@
 # vendor/
 bin/
 keys/
+cached
+labs/*/clab-*
+labs/*/.*.bak

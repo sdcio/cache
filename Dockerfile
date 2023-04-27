@@ -9,9 +9,9 @@ RUN git config --global url.ssh://git@github.com/.insteadOf https://github.com/
 ADD . /build
 WORKDIR /build
 
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o cached .
+RUN CGO_ENABLED=0 go build -o /build/cache -ldflags="-s -w" .
 
 FROM scratch
-COPY --from=builder /build/cached /app/
+COPY --from=builder /build/cache /app/
 WORKDIR /app
-ENTRYPOINT [ "/app/cached" ]
+ENTRYPOINT [ "/app/cache" ]
