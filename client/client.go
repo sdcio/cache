@@ -14,9 +14,12 @@ import (
 )
 
 type Client struct {
-	cfg    *ClientConfig
+	cfg *ClientConfig
+
+	cc     *grpc.ClientConn
 	client cachepb.CacheClient
 }
+
 type ClientConfig struct {
 	Address       string
 	MaxReadStream int64
@@ -38,6 +41,13 @@ func New(ccfg *ClientConfig) (*Client, error) {
 		cfg:    ccfg,
 		client: cachepb.NewCacheClient(cc),
 	}, nil
+}
+
+func (c *Client) Close() error {
+	if c.cc == nil {
+		return nil
+	}
+	return c.cc.Close()
 }
 
 // List cache instances
