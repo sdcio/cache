@@ -55,3 +55,51 @@ bin/cachectl delete -n target1
 bin/cachectl delete -n target2
 bin/cachectl list
 ```
+
+## benchmark against the lab in labs/single
+
+### resources:
+
+```yaml
+cpu-set: 0-7
+memory: 16Gib
+```
+
+config:
+
+```yaml
+grpc-server:
+  ## other fields
+  buffer-size: -1 # defaults to 100k
+  write-workers: 16
+```
+
+### test results
+
+```shell
+bin/cachectl bench -a clab-cache-cache1:50100 \
+    --create \
+    --periodic \
+    --concurrency 16 \
+    --num-cache 16 \
+    --num-path 2500000
+    
+caches          : 16
+concurrency     : 16
+paths per cache : 2500000
+INFO[0000] cache creation:                              
+INFO[0000]      min: 15.729681ms                            
+INFO[0000]      max: 190.146609ms                           
+INFO[0000]      avg: 99.45483ms                             
+INFO[0010] writing...                                   
+INFO[0141] values write:                                
+INFO[0141]      min: 2m10.239277546s                        
+INFO[0141]      max: 2m10.787525438s                        
+INFO[0141]      avg: 2m10.570908544s                        
+INFO[0141] waiting 2min before reading                  
+INFO[0261] reading...                                   
+INFO[0361] values read:                                 
+INFO[0361]      min: 1m39.023845491s                        
+INFO[0361]      max: 1m39.026122698s                        
+INFO[0361]      avg: 1m39.0250051s 
+```

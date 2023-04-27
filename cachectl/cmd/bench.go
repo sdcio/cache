@@ -1,4 +1,19 @@
-package main
+/*
+Copyright © 2023 NAME HERE <EMAIL ADDRESS>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+package cmd
 
 import (
 	"context"
@@ -12,7 +27,7 @@ import (
 	"github.com/iptecharch/cache/proto/cachepb"
 	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/pflag"
+	"github.com/spf13/cobra"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -20,7 +35,6 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-var addr string
 var conc int64
 var numCache int64
 var numPaths int64
@@ -29,43 +43,52 @@ var deleteFlag bool
 var doNotWrite bool
 var periodic bool
 
-func main() {
-	pflag.StringVarP(&addr, "address", "a", "localhost:50100", "cache server address")
-	pflag.Int64VarP(&numCache, "num-cache", "", 10, "number of caches to create")
-	pflag.Int64VarP(&conc, "concurrency", "", 10, "max concurrent set requests")
-	pflag.Int64VarP(&numPaths, "num-path", "", 100, "number of paths to write per cache")
-	pflag.BoolVarP(&createFlag, "create", "", false, "create caches at startup")
-	pflag.BoolVarP(&doNotWrite, "no-write", "", false, "do not write, only read")
-	pflag.BoolVarP(&deleteFlag, "delete", "", false, "delete caches at the end")
-	pflag.BoolVarP(&periodic, "periodic", "", false, "run periodically")
-	pflag.Parse()
+// benchCmd represents the benchmark command
+var benchCmd = &cobra.Command{
+	Use:     "benchmark",
+	Short:   "run a benchmark test",
+	Aliases: []string{"bench"},
 
-	fmt.Println("caches          :", numCache)
-	fmt.Println("concurrency     :", conc)
-	fmt.Println("paths per cache :", numPaths)
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		cc, cclient, err := createCacheClient(address)
+		if err != nil {
+			panic(err)
+		}
+		defer cc.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	cc, cclient, err := createCacheClient(addr)
-	if err != nil {
-		panic(err)
-	}
-	defer cc.Close()
-	//
-	runAll(ctx, cclient, true)
+		fmt.Println("caches          :", numCache)
+		fmt.Println("concurrency     :", conc)
+		fmt.Println("paths per cache :", numPaths)
 
-	if periodic {
-		ticker := time.NewTicker(15 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-			case <-ticker.C:
-				runAll(ctx, cclient, false)
+		runAll(ctx, cclient, true)
+
+		if periodic {
+			ticker := time.NewTicker(15 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+				case <-ticker.C:
+					runAll(ctx, cclient, false)
+				}
 			}
 		}
-	}
+		return nil
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(benchCmd)
+	benchCmd.Flags().Int64VarP(&numCache, "num-cache", "", 10, "number of caches to create")
+	benchCmd.Flags().Int64VarP(&conc, "concurrency", "", 10, "max concurrent set requests")
+	benchCmd.Flags().Int64VarP(&numPaths, "num-path", "", 100, "number of paths to write per cache")
+	benchCmd.Flags().BoolVarP(&createFlag, "create", "", false, "create caches at startup")
+	benchCmd.Flags().BoolVarP(&doNotWrite, "no-write", "", false, "do not write, only read")
+	benchCmd.Flags().BoolVarP(&deleteFlag, "delete", "", false, "delete caches at the end")
+	benchCmd.Flags().BoolVarP(&periodic, "periodic", "", false, "run periodically")
 }
 
 func createCacheClient(addr string) (*grpc.ClientConn, cachepb.CacheClient, error) {
