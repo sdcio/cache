@@ -54,7 +54,7 @@ func (c *cache[T]) Init(ctx context.Context) error {
 			Ephemeral: false,
 			Dir:       c.cfg.Dir,
 		}
-		ci := initCacheInstance(ctx, ccfg, c.bFn)
+		ci := initCacheInstance(ccfg, c.bFn)
 		err = ci.store.LoadCache(ctx, cacheName)
 		if err != nil {
 			return err

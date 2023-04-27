@@ -11,9 +11,9 @@ topology:
       ports:
         - "50100:50100/tcp"
         - "50190:50190/tcp"
-        - "6060:6060/tcp"
+        - "6060:6060/tcp" # for pprof
       cpu-set: 0-7
-      memory: 8Gib
+      memory: 16Gib
       # cmd: -d
 
     prometheus:

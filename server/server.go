@@ -22,7 +22,8 @@ import (
 )
 
 type Server[T proto.Message] struct {
-	cfg   *config.Config
+	cfg *config.Config
+
 	cache cache.Cache[T]
 	bfn   func() T
 	srv   *grpc.Server
@@ -37,8 +38,7 @@ type Server[T proto.Message] struct {
 
 func NewServer[T proto.Message](ctx context.Context, cfg *config.Config, fn func() T) (*Server[T], error) {
 	s := &Server[T]{
-		cfg: cfg,
-		// cache:    c,
+		cfg:      cfg,
 		bfn:      fn,
 		router:   mux.NewRouter(),
 		reg:      prometheus.NewRegistry(),

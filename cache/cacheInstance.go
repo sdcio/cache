@@ -20,9 +20,11 @@ const (
 var defaultBuckets = []string{configBucketName, stateBucketName}
 
 type cacheInstance[T proto.Message] struct {
-	cfg        *CacheInstanceConfig
-	config     *ctree.Tree
-	state      *ctree.Tree
+	cfg *CacheInstanceConfig
+
+	config *ctree.Tree
+	state  *ctree.Tree
+
 	m          *sync.RWMutex
 	candidates map[string]*candidate[T]
 	store      store.Store[T]
@@ -38,7 +40,7 @@ type CacheInstanceConfig struct {
 }
 
 func newCacheInstance[T proto.Message](ctx context.Context, cfg *CacheInstanceConfig, bfn func() T) (*cacheInstance[T], error) {
-	ci := initCacheInstance(ctx, cfg, bfn)
+	ci := initCacheInstance(cfg, bfn)
 	storeConfig := map[string]any{
 		"cached": cfg.Cached,
 	}
@@ -46,7 +48,7 @@ func newCacheInstance[T proto.Message](ctx context.Context, cfg *CacheInstanceCo
 	return ci, err
 }
 
-func initCacheInstance[T proto.Message](ctx context.Context, cfg *CacheInstanceConfig, bfn func() T) *cacheInstance[T] {
+func initCacheInstance[T proto.Message](cfg *CacheInstanceConfig, bfn func() T) *cacheInstance[T] {
 	ci := &cacheInstance[T]{
 		cfg:        cfg,
 		config:     &ctree.Tree{},

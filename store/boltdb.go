@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -314,6 +315,8 @@ func (s *bboltStore[T]) openDB(name string) (*bolt.DB, error) {
 	return bdb, nil
 }
 
+// TODO: needs a context for cancellation
+
 // boltDBGetAllFn builds a function that can be passed to db.View()
 // it reads all the KV from an index and writes the KV pair to the channel KvCh
 func boltDBGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *bolt.Tx) error {
@@ -335,16 +338,21 @@ func boltDBGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *bolt.Tx) e
 		err := tx.ForEach(
 			func(name []byte, b *bolt.Bucket) error {
 				// skip bucket if the name does not match
-				err := b.ForEach(func(k, v []byte) error {
-					kvToChan(k, v, kvCh)
+				if strings.HasPrefix(string(name), "__") {
 					return nil
-				})
+				}
+				err := b.ForEach(
+					func(k, v []byte) error {
+						kvToChan(k, v, kvCh)
+						return nil
+					})
 				return err
 			})
 		return err
 	}
 }
 
+// TODO: needs a context for cancellation
 func boltDBGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) func(tx *bolt.Tx) error {
 	return func(tx *bolt.Tx) error {
 		// specific bucket
@@ -364,15 +372,15 @@ func boltDBGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) f
 		// loop through buckets
 		err := tx.ForEach(
 			func(name []byte, b *bolt.Bucket) error {
-				// skip bucket if the name does not match
-				err := b.ForEach(func(k, v []byte) error {
-					c := b.Cursor()
-					for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
-						kvToChan(k, v, kvCh)
-					}
+				// skip bucket if it's the store config bucket
+				if strings.HasPrefix(string(name), "__") {
 					return nil
-				})
-				return err
+				}
+				c := b.Cursor()
+				for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
+					kvToChan(k, v, kvCh)
+				}
+				return nil
 			})
 		return err
 	}

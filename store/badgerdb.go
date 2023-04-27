@@ -296,7 +296,7 @@ func (s *badgerDBStore[T]) GetAll(ctx context.Context, name, bucket string) (cha
 	kvCh := make(chan *KV)
 	go func() {
 		defer close(kvCh)
-		err := db.db.View(badgerGetAllFn(name, bucket, kvCh))
+		err := db.db.View(badgerGetAllFn(ctx, name, bucket, kvCh))
 		if err != nil {
 			log.Errorf("failed to read all values from cache/bucket %s/%s: %v", name, bucket, err)
 		}
@@ -317,7 +317,7 @@ func (s *badgerDBStore[T]) GetPrefix(ctx context.Context, name, bucket string, p
 	kvCh := make(chan *KV)
 	go func() {
 		defer close(kvCh)
-		err := db.db.View(badgerGetPrefixFn(name, bucket, prefix, kvCh))
+		err := db.db.View(badgerGetPrefixFn(ctx, name, bucket, prefix, kvCh))
 		if err != nil {
 			log.Errorf("failed to read values based on prefix from cache %s: %v", name, err)
 		}
@@ -369,7 +369,7 @@ func (s *badgerDBStore[T]) openDB(ctx context.Context, name string) (*badger.DB,
 
 // badgerGetAllFn builds a function that can be passed to db.View()
 // it reads all the KV from an index and writes the KV pair to the channel KvCh
-func badgerGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *badger.Txn) error {
+func badgerGetAllFn(ctx context.Context, indexName, bucket string, kvCh chan *KV) func(tx *badger.Txn) error {
 	return func(tx *badger.Txn) error {
 		it := tx.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
@@ -383,17 +383,23 @@ func badgerGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *badger.Txn
 			// get both config and state
 			// iterate over keys
 			for it.Rewind(); it.Valid(); it.Next() {
-				item := it.Item()
-				key := item.Key()
-				if key[0] == 0 {
-					continue // skip cache config
-				}
-				err := item.Value(func(v []byte) error {
-					kvToChan(key[1:], v, kvCh)
-					return nil
-				})
-				if err != nil {
-					return err
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+
+					item := it.Item()
+					key := item.Key()
+					if key[0] == 0 {
+						continue // skip cache config
+					}
+					err := item.Value(func(v []byte) error {
+						kvToChan(key[1:], v, kvCh)
+						return nil
+					})
+					if err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -417,7 +423,7 @@ func badgerGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *badger.Txn
 	}
 }
 
-func badgerGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) func(tx *badger.Txn) error {
+func badgerGetPrefixFn(ctx context.Context, indexName, bucket string, prefix []byte, kvCh chan *KV) func(tx *badger.Txn) error {
 	return func(tx *badger.Txn) error {
 		k := []byte(prefix)
 		k = append(k, 0)
@@ -438,14 +444,19 @@ func badgerGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) f
 			it := tx.NewIterator(badger.DefaultIteratorOptions)
 			defer it.Close()
 			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-				item := it.Item()
-				k := item.Key()
-				err := item.Value(func(v []byte) error {
-					kvToChan(k[1:], v, kvCh)
-					return nil
-				})
-				if err != nil {
-					return err
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					item := it.Item()
+					k := item.Key()
+					err := item.Value(func(v []byte) error {
+						kvToChan(k[1:], v, kvCh)
+						return nil
+					})
+					if err != nil {
+						return err
+					}
 				}
 			}
 		}

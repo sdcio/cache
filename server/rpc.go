@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"time"
+	"strings"
 
 	"github.com/iptecharch/cache/cache"
 	"github.com/iptecharch/cache/proto/cachepb"
@@ -70,6 +70,9 @@ func (s *Server[T]) CreateCandidate(ctx context.Context, req *cachepb.CreateCand
 func (s *Server[T]) Create(ctx context.Context, req *cachepb.CreateRequest) (*cachepb.CreateResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
+	}
+	if strings.Contains(req.GetName(), "/") {
+		return nil, status.Errorf(codes.InvalidArgument, "`/` is not allowed in a cache name")
 	}
 	if !req.GetCached() && req.GetEphemeral() {
 		return nil, status.Errorf(codes.InvalidArgument, "a cache cannot be ephemeral and not cached")
@@ -259,7 +262,7 @@ func (s *Server[T]) modifyWrite(req *cachepb.WriteValueRequest, _ cachepb.Cache_
 	}
 
 	// ctx := stream.Context()
-	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 	err = s.cache.WriteValue(ctx, req.GetName(), store, req.GetPath(), m)
 	if err != nil {
@@ -279,7 +282,7 @@ func (s *Server[T]) modifyDelete(req *cachepb.DeleteValueRequest, _ cachepb.Cach
 		store = cache.StoreState
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 	err = s.cache.DeleteValue(ctx, req.GetName(), store, req.GetPath())
 	if err != nil {
