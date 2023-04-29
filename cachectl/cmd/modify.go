@@ -48,7 +48,7 @@ var modifyCmd = &cobra.Command{
 			return fmt.Errorf("unknown store name: %s", storeName)
 		}
 
-		c, err := client.New(&client.ClientConfig{
+		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
 		})

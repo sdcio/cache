@@ -30,7 +30,7 @@ var getChangesCmd = &cobra.Command{
 	Short: "get changes made to a candidate",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		c, err := client.New(&client.ClientConfig{
+		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
 		})

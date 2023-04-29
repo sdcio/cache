@@ -43,8 +43,8 @@ type Cache[T proto.Message] interface {
 	ReadValueCh(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error)
 	// DeleteValue deletes a value from a cache instance.
 	DeleteValue(ctx context.Context, name string, store Store, p []string) error
-	// GetChanges returns the changes made to a candidate
-	GetChanges(ctx context.Context, name, candidate string) ([][]string, []*Entry[T], error)
+	// Diff returns the changes made to a candidate
+	Diff(ctx context.Context, name, candidate string) ([][]string, []*Entry[T], error)
 	// Discard drops the changes made to a candidate
 	Discard(ctx context.Context, name, candidate string) error
 	// Close the underlying resources, like the persistent store

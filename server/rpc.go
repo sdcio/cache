@@ -90,11 +90,15 @@ func (s *Server[T]) Create(ctx context.Context, req *cachepb.CreateRequest) (*ca
 }
 
 func (s *Server[T]) Delete(ctx context.Context, req *cachepb.DeleteRequest) (*cachepb.DeleteResponse, error) {
+	log.Debugf("received delete request %v", req)
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
 	err := s.cache.Delete(ctx, req.GetName())
-	return &cachepb.DeleteResponse{}, err
+	if err != nil {
+		return nil, err
+	}
+	return &cachepb.DeleteResponse{}, nil
 }
 
 func (s *Server[T]) List(ctx context.Context, req *cachepb.ListRequest) (*cachepb.ListResponse, error) {
@@ -151,7 +155,7 @@ func (s *Server[T]) GetChanges(req *cachepb.GetChangesRequest, stream cachepb.Ca
 		return status.Errorf(codes.InvalidArgument, "candidate cannot be empty")
 	}
 	ctx := stream.Context()
-	dels, updates, err := s.cache.GetChanges(ctx, req.GetName(), req.GetCandidate())
+	dels, updates, err := s.cache.Diff(ctx, req.GetName(), req.GetCandidate())
 	if err != nil {
 		return err
 	}

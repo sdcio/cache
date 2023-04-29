@@ -31,7 +31,7 @@ var cloneCmd = &cobra.Command{
 	Short: "clone a cache instance",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		c, err := client.New(&client.ClientConfig{
+		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
 		})

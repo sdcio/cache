@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/iptecharch/cache/config"
-	"github.com/iptecharch/schema-server/datastore/ctree"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -54,50 +53,17 @@ func (c *cache[T]) Init(ctx context.Context) error {
 			Ephemeral: false,
 			Dir:       c.cfg.Dir,
 		}
-		ci := initCacheInstance(ccfg, c.bFn)
-		err = ci.store.LoadCache(ctx, cacheName)
-		if err != nil {
-			return err
-		}
-		mcfg, err := ci.store.GetCacheConfig(ctx, cacheName)
-		if err != nil {
-			return err
-		}
-		log.Infof("got cache %q with config: %+v\n", cacheName, mcfg)
 
-		var ok bool
-		ccfg.Cached, ok = mcfg["cached"].(bool)
-		if !ok {
-			log.Errorf("cache %q not loaded: invalid config: %#v", cacheName, mcfg)
-			continue
+		ci := newCacheInstance(ccfg, c.bFn)
+
+		err = ci.initFromStore(ctx, wg)
+		if err != nil {
+			return err
 		}
-		//
+
 		ci.m.Lock()
 		c.caches[cacheName] = ci
 		ci.m.Unlock()
-		// if it's supposed to be cached,
-		// load KVs into the tree
-		if ccfg.Cached {
-			wg.Add(2)
-			go func() {
-				defer wg.Done()
-				n, err := ci.loadAll(ctx, cacheName, "config")
-				if err != nil {
-					log.Errorf("Failed to load cache %s config bucket", cacheName)
-					return
-				}
-				log.Infof("cache=%s, bucket=%s: loaded %d KV", cacheName, "config", n)
-			}()
-			go func() {
-				defer wg.Done()
-				n, err := ci.loadAll(ctx, cacheName, "state")
-				if err != nil {
-					log.Errorf("Failed to load cache %s state bucket", cacheName)
-					return
-				}
-				log.Debugf("cache=%s, bucket=%s: loaded %d KV", cacheName, "state", n)
-			}()
-		}
 	}
 	wg.Wait()
 	log.Info("caches loaded")
@@ -138,7 +104,7 @@ func (c *cache[T]) Create(ctx context.Context, cfg *CacheInstanceConfig) error {
 		return fmt.Errorf("cache %q already exists", cfg.Name)
 	}
 
-	ci, err := newCacheInstance(ctx, cfg, c.bFn)
+	ci, err := createCacheInstance(ctx, cfg, c.bFn)
 	if err != nil {
 		return err
 	}
@@ -164,18 +130,18 @@ func (c *cache[T]) Delete(ctx context.Context, name string) error {
 	if !ok {
 		return fmt.Errorf("cache %q does not exist", name)
 	}
-	if cname == "" {
-		// delete cache
-		c.m.Lock()
-		defer c.m.Unlock()
-		delete(c.caches, name)
-		err := ci.store.DeleteCache(ctx, name)
+	// delete candidate
+	if cname != "" {
+		return ci.deleteCandidate(ctx, cname)
+	}
+	// delete cache
+	err := ci.delete(ctx, name)
+	if err != nil {
 		return err
 	}
-	// delete candidate
-	ci.m.Lock()
-	defer ci.m.Unlock()
-	delete(ci.candidates, cname)
+	c.m.Lock()
+	delete(c.caches, name)
+	c.m.Unlock()
 	return nil
 }
 
@@ -188,35 +154,13 @@ func (c *cache[T]) Clone(ctx context.Context, name, cname string) (string, error
 	if ok {
 		return "", fmt.Errorf("cache %q already exists", name)
 	}
-	cCfg, err := ci.config.Clone()
-	if err != nil {
-		return "", err
-	}
-	cState, err := ci.state.Clone()
-	if err != nil {
-		return "", err
-	}
-	clone, err := newCacheInstance(ctx,
-		&CacheInstanceConfig{
-			Name:      cname,
-			StoreType: ci.cfg.StoreType,
-			Ephemeral: ci.cfg.Ephemeral,
-			Cached:    ci.cfg.Cached,
-			Dir:       ci.cfg.Dir,
-		}, c.bFn)
-	if err != nil {
-		return "", err
-	}
-	clone.config = cCfg
-	clone.state = cState
-
-	err = ci.store.Clone(ctx, name, cname)
+	clone, err := ci.clone(ctx, cname)
 	if err != nil {
 		return "", err
 	}
 	c.m.Lock()
-	defer c.m.Unlock()
 	c.caches[cname] = clone
+	c.m.Unlock()
 	return cname, nil
 }
 
@@ -225,15 +169,8 @@ func (c *cache[T]) CreateCandidate(ctx context.Context, name, cname string) (str
 	if !ok {
 		return "", fmt.Errorf("cache %q does not exist", name)
 	}
-	ci.m.Lock()
-	defer ci.m.Unlock()
-	_, ok = ci.candidates[cname]
-	if ok {
-		return "", fmt.Errorf("candidate %q in cache %q already exists", cname, name)
-	}
-
-	ci.candidates[cname] = newCandidate[T]()
-	return cname, nil
+	err := ci.createCandidate(ctx, cname)
+	return cname, err
 }
 
 func (c *cache[T]) WriteValue(ctx context.Context, name string, store Store, p []string, v T) error {
@@ -262,69 +199,7 @@ func (c *cache[T]) ReadValue(ctx context.Context, name string, store Store, p []
 		return nil, fmt.Errorf("cache %q does not exist", name)
 	}
 
-	var f *candidate[T]
-	if cname != "" {
-		ci.m.RLock()
-		defer ci.m.RUnlock()
-		f, ok = ci.candidates[cname]
-		if !ok {
-			return nil, fmt.Errorf("no such candidate %q in cache %q", cname, name)
-		}
-	}
-	var err error
-	es := make([]*Entry[T], 0)
-	found := make(map[string]struct{})
-	// check if the path exists in the candidate
-	if cname != "" {
-		err = f.updates.Query(p,
-			func(path []string, _ *ctree.Leaf, val interface{}) error {
-				vt := val.(T)
-				e := &Entry[T]{
-					P: path,
-					V: vt,
-				}
-				es = append(es, e)
-				found[strings.Join(path, ",")] = struct{}{}
-				return nil
-			})
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if ci.cfg.Cached || ci.cfg.Ephemeral {
-		// read from main cache
-		err = ci.config.Query(p,
-			func(path []string, _ *ctree.Leaf, val interface{}) error {
-				if cname != "" {
-					// check if the path has been deleted
-					f.m.RLock()
-					_, ok := f.deletes[strings.Join(path, ",")]
-					f.m.RUnlock()
-					if ok {
-						return nil
-					}
-					if _, ok := found[strings.Join(path, ",")]; ok {
-						// path read from candidate, exit
-						return nil
-					}
-				}
-				// append value from main cache
-				vt := val.(T)
-				e := &Entry[T]{
-					P: path,
-					V: vt,
-				}
-				es = append(es, e)
-				return nil
-			},
-		)
-		return es, err
-	}
-	if !ci.cfg.Cached {
-		return ci.readFromStore(ctx, []byte(strings.Join(p, ",")))
-	}
-	return nil, nil
+	return ci.readValue(ctx, cname, store, p)
 }
 
 func (c *cache[T]) ReadValueCh(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error) {
@@ -335,76 +210,8 @@ func (c *cache[T]) ReadValueCh(ctx context.Context, name string, store Store, p 
 	if !ok {
 		return nil, fmt.Errorf("cache %q does not exist", name)
 	}
-	var f *candidate[T]
-	if cname != "" {
-		ci.m.RLock()
-		defer ci.m.RUnlock()
-		f, ok = ci.candidates[cname]
-		if !ok {
-			return nil, fmt.Errorf("no such candidate %q in cache %q", cname, name)
-		}
-	}
-	rsCh := make(chan *Entry[T])
-	go func() {
-		var err error
-		// es := make([]*Entry[T], 0)
-		found := make(map[string]struct{})
-		// check if the path exists in the candidate
-		if cname != "" {
-			err = f.updates.Query(p,
-				func(path []string, _ *ctree.Leaf, val interface{}) error {
-					vt := val.(T)
-					e := &Entry[T]{
-						P: path,
-						V: vt,
-					}
-					rsCh <- e
-					found[strings.Join(path, ",")] = struct{}{}
-					return nil
-				})
-			if err != nil {
-				log.Errorf("failed to run query: %v", err)
-			}
-		}
-		if ci.cfg.Cached || ci.cfg.Ephemeral {
-			// read from main cache
-			err = ci.config.Query(p,
-				func(path []string, _ *ctree.Leaf, val interface{}) error {
-					if cname != "" {
-						// check if the path has been deleted
-						f.m.RLock()
-						_, ok := f.deletes[strings.Join(path, ",")]
-						f.m.RUnlock()
-						if ok {
-							return nil
-						}
-						if _, ok := found[strings.Join(path, ",")]; ok {
-							// path read from candidate, exit
-							return nil
-						}
-					}
-					// append value from main cache
-					vt := val.(T)
-					e := &Entry[T]{
-						P: path,
-						V: vt,
-					}
-					rsCh <- e
-					return nil
-				})
-			if err != nil {
-				log.Errorf("failed to run query: %v", err)
-			}
-		}
-		if !ci.cfg.Cached {
-			err = ci.readFromStoreCh(ctx, []byte(strings.Join(p, ",")), rsCh)
-			if err != nil {
-				log.Errorf("failed to run query from store: %v", err)
-			}
-		}
-		close(rsCh)
-	}()
-	return rsCh, nil
+
+	return ci.readValueCh(ctx, cname, store, p)
 }
 
 func (c *cache[T]) DeleteValue(ctx context.Context, name string, store Store, p []string) error {
@@ -415,63 +222,16 @@ func (c *cache[T]) DeleteValue(ctx context.Context, name string, store Store, p 
 	if !ok {
 		return fmt.Errorf("cache %q does not exist", name)
 	}
-	if cname == "" {
-		bucket := "config"
-		if store == StoreState {
-			bucket = "state"
-		}
-		err := ci.store.DeleteValue(ctx, name, bucket, []byte(strings.Join(p, ",")))
-		if err != nil {
-			return err
-		}
-		ci.config.Delete(p)
-		return nil
-	}
-	ci.m.Lock()
-	defer ci.m.Unlock()
-	f, ok := ci.candidates[cname]
-	if !ok {
-		return fmt.Errorf("candidate %q does not exist in cache %q", cname, name)
-	}
-	f.updates.Delete(p)
 
-	f.m.Lock()
-	defer f.m.Unlock()
-	f.deletes[strings.Join(p, ",")] = struct{}{}
-	return nil
+	return ci.deleteValue(ctx, cname, store, p)
 }
 
-func (c *cache[T]) GetChanges(ctx context.Context, name, candidate string) ([][]string, []*Entry[T], error) {
+func (c *cache[T]) Diff(ctx context.Context, name, candidate string) ([][]string, []*Entry[T], error) {
 	ci, ok := c.getCacheInstance(ctx, name)
 	if !ok {
 		return nil, nil, fmt.Errorf("cache %q does not exist", name)
 	}
-	ci.m.RLock()
-	defer ci.m.RUnlock()
-	if cand, ok := ci.candidates[candidate]; ok {
-		dels := make([][]string, 0, len(cand.deletes))
-		es := make([]*Entry[T], 0)
-		// deletes
-		for p := range cand.deletes {
-			dels = append(dels, strings.Split(p, ","))
-		}
-		// updates
-		err := cand.updates.Query([]string{},
-			func(path []string, _ *ctree.Leaf, val interface{}) error {
-				vt := val.(T)
-				e := &Entry[T]{
-					P: path,
-					V: vt,
-				}
-				es = append(es, e)
-				return nil
-			})
-		if err != nil {
-			return nil, nil, err
-		}
-		return dels, es, nil
-	}
-	return nil, nil, fmt.Errorf("candidate %q does not exist for cache %q", candidate, name)
+	return ci.diff(candidate)
 }
 
 func (c *cache[T]) Discard(ctx context.Context, name, candidate string) error {
@@ -479,12 +239,7 @@ func (c *cache[T]) Discard(ctx context.Context, name, candidate string) error {
 	if !ok {
 		return fmt.Errorf("cache %q does not exist", name)
 	}
-	ci.m.RLock()
-	defer ci.m.RUnlock()
-	if cand, ok := ci.candidates[candidate]; ok {
-		cand.deletes = make(map[string]struct{})
-		cand.updates = &ctree.Tree{}
-	}
+	ci.discard(candidate)
 	return nil
 }
 

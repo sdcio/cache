@@ -5,12 +5,17 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/iptecharch/cache/proto/cachepb"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+)
+
+const (
+	defaultTimeout = 5 * time.Second
 )
 
 type Client struct {
@@ -21,15 +26,31 @@ type Client struct {
 }
 
 type ClientConfig struct {
-	Address       string
+	// the cache server address
+	Address string
+	// number of read streams that can be opened concurrently
+	// defaults to 1
 	MaxReadStream int64
+	// gRPC dial and unary RPCs timeout
+	// defaults to 5s
+	Timeout time.Duration
 }
 
-func New(ccfg *ClientConfig) (*Client, error) {
+func New(ctx context.Context, ccfg *ClientConfig) (*Client, error) {
+	if ccfg.Address == "" {
+		return nil, fmt.Errorf("missing server address")
+	}
 	if ccfg.MaxReadStream <= 0 {
 		ccfg.MaxReadStream = 1
 	}
-	cc, err := grpc.Dial(ccfg.Address,
+	if ccfg.Timeout <= 0 {
+		ccfg.Timeout = defaultTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, ccfg.Timeout)
+	defer cancel()
+
+	cc, err := grpc.DialContext(ctx, ccfg.Address,
 		grpc.WithBlock(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -52,6 +73,8 @@ func (c *Client) Close() error {
 
 // List cache instances
 func (c *Client) List(ctx context.Context, opts ...grpc.CallOption) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	rsp, err := c.client.List(ctx, &cachepb.ListRequest{}, opts...)
 	if err != nil {
 		return nil, err
@@ -61,6 +84,8 @@ func (c *Client) List(ctx context.Context, opts ...grpc.CallOption) ([]string, e
 
 // Get a single cache details
 func (c *Client) Get(ctx context.Context, name string, opts ...grpc.CallOption) (*cachepb.GetResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	rsp, err := c.client.Get(ctx, &cachepb.GetRequest{
 		Name: name,
 	}, opts...)
@@ -72,6 +97,8 @@ func (c *Client) Get(ctx context.Context, name string, opts ...grpc.CallOption) 
 
 // Create a new cache instance
 func (c *Client) Create(ctx context.Context, name string, ephemeral, cached bool, opts ...grpc.CallOption) error {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	_, err := c.client.Create(ctx,
 		&cachepb.CreateRequest{
 			Name:      name,
@@ -84,6 +111,8 @@ func (c *Client) Create(ctx context.Context, name string, ephemeral, cached bool
 
 // Delete a cache instance
 func (c *Client) Delete(ctx context.Context, name string, opts ...grpc.CallOption) error {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	_, err := c.client.Delete(ctx,
 		&cachepb.DeleteRequest{
 			Name: name},
@@ -93,6 +122,8 @@ func (c *Client) Delete(ctx context.Context, name string, opts ...grpc.CallOptio
 
 // Create a Candidate
 func (c *Client) CreateCandidate(ctx context.Context, name, candidate string, opts ...grpc.CallOption) error {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	_, err := c.client.CreateCandidate(ctx,
 		&cachepb.CreateCandidateRequest{
 			Name:      name,
@@ -104,6 +135,8 @@ func (c *Client) CreateCandidate(ctx context.Context, name, candidate string, op
 
 // Clone a cache
 func (c *Client) Clone(ctx context.Context, name, clone string, opts ...grpc.CallOption) error {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	_, err := c.client.Clone(ctx,
 		&cachepb.CloneRequest{
 			Name:  name,
@@ -253,6 +286,8 @@ func (c *Client) GetChanges(ctx context.Context, name, candidate string, opts ..
 
 // Discard changes made to a candidate
 func (c *Client) Discard(ctx context.Context, name, candidate string, opts ...grpc.CallOption) error {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
 	_, err := c.client.Discard(ctx, &cachepb.DiscardRequest{
 		Name:      name,
 		Candidate: candidate,
