@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,21 +43,12 @@ func newBadgerDBStore[T proto.Message](p string) Store[T] {
 }
 
 func (s *badgerDBStore[T]) CreateCache(ctx context.Context, name string, cfg map[string]any, bucket ...string) error {
-	dbFileName := s.dbFileName(name)
-	fileDir := filepath.Dir(dbFileName)
-	// create file dir if it doesn't exist
-	if _, err := os.Stat(fileDir); os.IsNotExist(err) {
-		err = os.MkdirAll(fileDir, 0700)
-		if err != nil {
-			return err
-		}
-	}
 	bdb := &bdb{}
 	dbCtx, cancel := context.WithCancel(context.Background())
 	bdb.cfn = cancel
 
 	var err error
-	bdb.db, err = s.openDB(dbCtx, dbFileName)
+	bdb.db, err = s.openDB(dbCtx, s.dbDirName(name))
 	if err != nil {
 		return err
 	}
@@ -98,18 +90,23 @@ func (s *badgerDBStore[T]) ListCaches(ctx context.Context) ([]string, error) {
 
 func (s *badgerDBStore[T]) DeleteCache(ctx context.Context, name string) error {
 	s.m.Lock()
-	defer s.m.Lock()
 	db, ok := s.dbs[name]
 	if ok {
-		db.db.Close()
+		err := db.db.Close()
+		if err != nil {
+			log.Errorf("failed to close db: %v", err)
+		}
 		db.cfn()
 	}
+	delete(s.dbs, name)
+	s.m.Unlock()
 	// delete file if it exists
-	dbFileName := s.dbFileName(name)
-	if _, err := os.Stat(dbFileName); os.IsNotExist(err) {
+	dbDirName := s.dbDirName(name)
+	_, err := os.Stat(dbDirName)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	return os.Remove(dbFileName)
+	return os.RemoveAll(dbDirName)
 }
 
 func (s *badgerDBStore[T]) Clone(ctx context.Context, name, cname string) error {
@@ -172,14 +169,14 @@ func (s *badgerDBStore[T]) GetCacheConfig(ctx context.Context, name string) (map
 func (s *badgerDBStore[T]) SyncCache(ctx context.Context, name string) error { return nil }
 
 func (s *badgerDBStore[T]) LoadCache(ctx context.Context, name string) error {
-	dbFileName := s.dbFileName(name)
+	dbDirName := s.dbDirName(name)
 
 	bdb := &bdb{}
 	dbCtx, cancel := context.WithCancel(context.Background())
 	bdb.cfn = cancel
 
 	var err error
-	bdb.db, err = s.openDB(dbCtx, dbFileName)
+	bdb.db, err = s.openDB(dbCtx, dbDirName)
 	if err != nil {
 		return err
 	}
@@ -464,7 +461,6 @@ func badgerGetPrefixFn(ctx context.Context, indexName, bucket string, prefix []b
 	}
 }
 
-func (s *badgerDBStore[T]) dbFileName(cacheName string) string {
-	cachePath := filepath.Join(s.path, cacheName)
-	return cachePath + "/" + cacheName + ".db"
+func (s *badgerDBStore[T]) dbDirName(cacheName string) string {
+	return filepath.Join(s.path, cacheName)
 }

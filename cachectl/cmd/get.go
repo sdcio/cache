@@ -31,7 +31,7 @@ var getCmd = &cobra.Command{
 	Short: "get a cache instance details",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		c, err := client.New(&client.ClientConfig{
+		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
 		})

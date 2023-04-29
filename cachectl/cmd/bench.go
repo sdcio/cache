@@ -339,7 +339,7 @@ func runAll(ctx context.Context, cclient cachepb.CacheClient, first bool) {
 	//
 	if createFlag && first {
 		runCreate(ctx, cclient)
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Second)
 	}
 	//
 	// WRITE
@@ -347,8 +347,8 @@ func runAll(ctx context.Context, cclient cachepb.CacheClient, first bool) {
 	if !doNotWrite {
 		log.Println("writing...")
 		runWrite(ctx, cclient)
-		log.Println("waiting 2min before reading")
-		time.Sleep(2 * time.Minute)
+		log.Println("waiting 10s before reading")
+		time.Sleep(10 * time.Second)
 	}
 	//
 	// READ

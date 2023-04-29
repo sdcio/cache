@@ -32,7 +32,7 @@ var listCmd = &cobra.Command{
 	Short:   "list caches",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		c, err := client.New(&client.ClientConfig{
+		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
 		})

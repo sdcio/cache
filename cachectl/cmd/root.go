@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -11,6 +12,7 @@ import (
 
 var cfgFile string
 var address string
+var timeout time.Duration
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -30,6 +32,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVarP(&address, "address", "a", "localhost:50100", "cache server address")
+	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 5*time.Second, "RPCs timeout")
 }
 
 // initConfig reads in config file and ENV variables if set.

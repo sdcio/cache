@@ -17,7 +17,6 @@ package cmd
 
 import (
 	"context"
-	"time"
 
 	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
@@ -29,14 +28,15 @@ var deleteCmd = &cobra.Command{
 	Short: "delete a cache instance",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		c, err := client.New(&client.ClientConfig{
+		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
+			Timeout:       timeout,
 		})
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 		defer cancel()
 		err = c.Delete(ctx, cacheName)
 		if err != nil {
