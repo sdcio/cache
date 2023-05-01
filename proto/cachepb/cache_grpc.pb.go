@@ -42,6 +42,8 @@ type CacheClient interface {
 	GetChanges(ctx context.Context, in *GetChangesRequest, opts ...grpc.CallOption) (Cache_GetChangesClient, error)
 	// Discard changes made to a candidate
 	Discard(ctx context.Context, in *DiscardRequest, opts ...grpc.CallOption) (*DiscardResponse, error)
+	// Stats requests statistics from the cache server
+	Stats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error)
 }
 
 type cacheClient struct {
@@ -213,6 +215,15 @@ func (c *cacheClient) Discard(ctx context.Context, in *DiscardRequest, opts ...g
 	return out, nil
 }
 
+func (c *cacheClient) Stats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error) {
+	out := new(StatsResponse)
+	err := c.cc.Invoke(ctx, "/cache.proto.Cache/Stats", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CacheServer is the server API for Cache service.
 // All implementations must embed UnimplementedCacheServer
 // for forward compatibility
@@ -237,6 +248,8 @@ type CacheServer interface {
 	GetChanges(*GetChangesRequest, Cache_GetChangesServer) error
 	// Discard changes made to a candidate
 	Discard(context.Context, *DiscardRequest) (*DiscardResponse, error)
+	// Stats requests statistics from the cache server
+	Stats(context.Context, *StatsRequest) (*StatsResponse, error)
 	mustEmbedUnimplementedCacheServer()
 }
 
@@ -273,6 +286,9 @@ func (UnimplementedCacheServer) GetChanges(*GetChangesRequest, Cache_GetChangesS
 }
 func (UnimplementedCacheServer) Discard(context.Context, *DiscardRequest) (*DiscardResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Discard not implemented")
+}
+func (UnimplementedCacheServer) Stats(context.Context, *StatsRequest) (*StatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Stats not implemented")
 }
 func (UnimplementedCacheServer) mustEmbedUnimplementedCacheServer() {}
 
@@ -481,6 +497,24 @@ func _Cache_Discard_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Cache_Stats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CacheServer).Stats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cache.proto.Cache/Stats",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CacheServer).Stats(ctx, req.(*StatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Cache_ServiceDesc is the grpc.ServiceDesc for Cache service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -515,6 +549,10 @@ var Cache_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Discard",
 			Handler:    _Cache_Discard_Handler,
+		},
+		{
+			MethodName: "Stats",
+			Handler:    _Cache_Stats_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

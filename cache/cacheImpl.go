@@ -243,6 +243,56 @@ func (c *cache[T]) Discard(ctx context.Context, name, candidate string) error {
 	return nil
 }
 
+func (c *cache[T]) NumInstances() int {
+	c.m.RLock()
+	defer c.m.RUnlock()
+	return len(c.caches)
+}
+
+func (c *cache[T]) Stats(ctx context.Context, name string, withKeysCount bool) (*StatsResponse, error) {
+	count := c.NumInstances()
+	rsp := &StatsResponse{
+		NumInstances: count,
+	}
+	if !withKeysCount {
+		return rsp, nil
+	}
+	if name == "" {
+		rsp.InstanceStats = make(map[string]*InstanceStats, count)
+		c.m.RLock()
+		defer c.m.RUnlock()
+		wg := new(sync.WaitGroup)
+		wg.Add(count)
+		m := new(sync.Mutex)
+		for _, ci := range c.caches {
+			go func(ci *cacheInstance[T]) {
+				defer wg.Done()
+				ss, err := ci.stats(ctx)
+				if err != nil {
+					log.Errorf("failed to get stats from cache instance %s: %v", ci.cfg.Name, err)
+					return
+				}
+				m.Lock()
+				rsp.InstanceStats[ci.cfg.Name] = ss
+				m.Unlock()
+			}(ci)
+		}
+		wg.Wait()
+		return rsp, nil
+	}
+	ci, ok := c.getCacheInstance(ctx, name)
+	if !ok {
+		return nil, fmt.Errorf("unknown cache instance %s", name)
+	}
+	rsp.InstanceStats = make(map[string]*InstanceStats, 1)
+	ss, err := ci.stats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rsp.InstanceStats[ci.cfg.Name] = ss
+	return rsp, nil
+}
+
 func (c *cache[T]) Close() error {
 	c.m.RLock()
 	defer c.m.RUnlock()

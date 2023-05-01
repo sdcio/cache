@@ -16,7 +16,6 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -51,13 +50,12 @@ var modifyCmd = &cobra.Command{
 		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
+			Timeout:       timeout,
 		})
 		if err != nil {
 			return err
 		}
 
-		ctx, cancel := context.WithCancel(cmd.Context())
-		defer cancel()
 		dels := make([][]string, 0, len(deletePaths))
 
 		for _, del := range deletePaths {
@@ -86,7 +84,7 @@ var modifyCmd = &cobra.Command{
 				},
 			})
 		}
-		err = c.Modify(ctx, cacheName, store, dels, upds)
+		err = c.Modify(cmd.Context(), cacheName, store, dels, upds)
 		if err != nil {
 			return err
 		}

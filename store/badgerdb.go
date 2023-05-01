@@ -332,6 +332,53 @@ func (s *badgerDBStore[T]) Close() error {
 	return nil
 }
 
+func (s *badgerDBStore[T]) Stats(ctx context.Context, name string) (*StoreStats, error) {
+	s.m.RLock()
+	defer s.m.RUnlock()
+	db, ok := s.dbs[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown cache name %s", name)
+	}
+
+	count := len(s.dbs)
+	ss := &StoreStats{
+		NumCache:      count,
+		KeysPerBucket: make(map[string]int64),
+	}
+	configKeyCount := int64(0)
+	stateKeyCount := int64(0)
+	err := db.db.View(func(tx *badger.Txn) error {
+		iterOpts := badger.DefaultIteratorOptions
+		iterOpts.PrefetchValues = false
+
+		it := tx.NewIterator(iterOpts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				item := it.Item()
+				key := item.Key()
+				switch key[0] {
+				case configPrefix:
+					configKeyCount++
+				case statePrefix:
+					stateKeyCount++
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to count cache %q keys: %v", name, err)
+	}
+	ss.KeysPerBucket["config"] = configKeyCount
+	ss.KeysPerBucket["state"] = stateKeyCount
+	return ss, nil
+}
+
 func (s *badgerDBStore[T]) openDB(ctx context.Context, name string) (*badger.DB, error) {
 	opts := badger.DefaultOptions(name).
 		WithLoggingLevel(badger.WARNING).

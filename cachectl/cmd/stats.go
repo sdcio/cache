@@ -16,14 +16,19 @@ limitations under the License.
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
 )
 
-// deleteCmd represents the delete command
-var deleteCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "delete a cache instance",
+var keyCount bool
+
+// statsCmd represents the stats command
+var statsCmd = &cobra.Command{
+	Use:   "stats",
+	Short: "get stats of a cache instance",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		c, err := client.New(cmd.Context(), &client.ClientConfig{
@@ -34,15 +39,18 @@ var deleteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		err = c.Delete(cmd.Context(), cacheName)
+		rsp, err := c.Stats(cmd.Context(), cacheName, keyCount)
 		if err != nil {
 			return err
 		}
+		b, _ := json.MarshalIndent(rsp, "", "  ")
+		fmt.Println(string(b))
 		return nil
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(deleteCmd)
-	deleteCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
+	rootCmd.AddCommand(statsCmd)
+	statsCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
+	statsCmd.Flags().BoolVarP(&keyCount, "keys", "", false, "include key count")
 }

@@ -40,4 +40,5 @@ func (s *noopStore[T]) GetAll(ctx context.Context, name, bucket string) (chan *K
 func (s *noopStore[T]) GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte) (chan *KV, error) {
 	return nil, nil
 }
-func (s *noopStore[T]) Close() error { return nil }
+func (s *noopStore[T]) Close() error                                                { return nil }
+func (s *noopStore[T]) Stats(ctx context.Context, name string) (*StoreStats, error) { return nil, nil }

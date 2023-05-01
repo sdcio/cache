@@ -327,3 +327,16 @@ func (ci *cacheInstance[T]) diff(candidate string) ([][]string, []*Entry[T], err
 	}
 	return nil, nil, fmt.Errorf("candidate %q does not exist for cache %q", candidate, ci.cfg.Name)
 }
+
+func (ci *cacheInstance[T]) stats(ctx context.Context) (*InstanceStats, error) {
+	ss, err := ci.store.Stats(ctx, ci.cfg.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	is := &InstanceStats{
+		Name:     ci.cfg.Name,
+		KeyCount: ss.KeysPerBucket,
+	}
+	return is, nil
+}

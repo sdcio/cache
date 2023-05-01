@@ -302,6 +302,8 @@ func (s *bboltStore[T]) Close() error {
 	return nil
 }
 
+func (s *bboltStore[T]) Stats(ctx context.Context, name string) (*StoreStats, error) { return nil, nil }
+
 func (s *bboltStore[T]) openDB(name string) (*bolt.DB, error) {
 	bdb, err := bolt.Open(name, 0644, &bolt.Options{
 		NoFreelistSync: true,
