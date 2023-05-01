@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"sync"
 	"time"
@@ -166,8 +167,6 @@ func (s *badgerDBStore[T]) GetCacheConfig(ctx context.Context, name string) (map
 	return cfg, err
 }
 
-func (s *badgerDBStore[T]) SyncCache(ctx context.Context, name string) error { return nil }
-
 func (s *badgerDBStore[T]) LoadCache(ctx context.Context, name string) error {
 	dbDirName := s.dbDirName(name)
 
@@ -302,7 +301,7 @@ func (s *badgerDBStore[T]) GetAll(ctx context.Context, name, bucket string) (cha
 	return kvCh, nil
 }
 
-func (s *badgerDBStore[T]) GetPrefix(ctx context.Context, name, bucket string, prefix []byte) (chan *KV, error) {
+func (s *badgerDBStore[T]) GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte) (chan *KV, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -314,7 +313,7 @@ func (s *badgerDBStore[T]) GetPrefix(ctx context.Context, name, bucket string, p
 	kvCh := make(chan *KV)
 	go func() {
 		defer close(kvCh)
-		err := db.db.View(badgerGetPrefixFn(ctx, name, bucket, prefix, kvCh))
+		err := db.db.View(badgerGetPrefixFn(ctx, name, bucket, prefix, pattern, kvCh))
 		if err != nil {
 			log.Errorf("failed to read values based on prefix from cache %s: %v", name, err)
 		}
@@ -384,7 +383,6 @@ func badgerGetAllFn(ctx context.Context, indexName, bucket string, kvCh chan *KV
 				case <-ctx.Done():
 					return ctx.Err()
 				default:
-
 					item := it.Item()
 					key := item.Key()
 					if key[0] == 0 {
@@ -420,40 +418,33 @@ func badgerGetAllFn(ctx context.Context, indexName, bucket string, kvCh chan *KV
 	}
 }
 
-func badgerGetPrefixFn(ctx context.Context, indexName, bucket string, prefix []byte, kvCh chan *KV) func(tx *badger.Txn) error {
+// badgerGetPrefixFn
+func badgerGetPrefixFn(ctx context.Context, indexName, bucket string, prefix, pattern []byte, kvCh chan *KV) func(tx *badger.Txn) error {
 	return func(tx *badger.Txn) error {
-		k := []byte(prefix)
-		k = append(k, 0)
-		copy(k[1:], k)
-		prefixes := make([][]byte, 0, 2)
-		switch bucket {
-		case "config":
-			k[0] = configPrefix
-			prefixes = append(prefixes, k)
-		case "state":
-			k[0] = statePrefix
-			prefixes = append(prefixes, k)
-		default:
-			prefixes = append(prefixes, append([]byte{configPrefix}, k[1:]...))
-			prefixes = append(prefixes, append([]byte{statePrefix}, k[1:]...))
+		withPattern := len(pattern) > 0
+		var re *regexp.Regexp
+		var err error
+		if withPattern {
+			re, err = regexp.Compile(string(pattern))
+			if err != nil {
+				return err
+			}
 		}
-		for _, prefix := range prefixes {
+		for _, pr := range getPrefixes(bucket, prefix) {
 			it := tx.NewIterator(badger.DefaultIteratorOptions)
 			defer it.Close()
-			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				default:
-					item := it.Item()
-					k := item.Key()
-					err := item.Value(func(v []byte) error {
-						kvToChan(k[1:], v, kvCh)
-						return nil
-					})
-					if err != nil {
-						return err
-					}
+			for it.Seek(pr); it.ValidForPrefix(pr); it.Next() {
+				item := it.Item()
+				k := item.Key()
+				if withPattern && !re.Match(k[1:]) {
+					continue
+				}
+				err := item.Value(func(v []byte) error {
+					kvToChan(k[1:], v, kvCh)
+					return nil
+				})
+				if err != nil {
+					return err
 				}
 			}
 		}
@@ -463,4 +454,29 @@ func badgerGetPrefixFn(ctx context.Context, indexName, bucket string, prefix []b
 
 func (s *badgerDBStore[T]) dbDirName(cacheName string) string {
 	return filepath.Join(s.path, cacheName)
+}
+
+func getPrefixes(bucket string, prefix []byte) [][]byte {
+	prefix = append(prefix, 0)
+	copy(prefix[1:], prefix)
+	prefixes := make([][]byte, 0, 2)
+	switch bucket {
+	case "config":
+		prefix[0] = configPrefix
+		prefixes = append(prefixes, prefix)
+	case "state":
+		prefix[0] = statePrefix
+		prefixes = append(prefixes, prefix)
+	default:
+		lprefix := len(prefix)
+		ck := make([]byte, lprefix)
+		ck[0] = configPrefix
+		copy(ck[1:], prefix[1:])
+
+		sk := make([]byte, lprefix)
+		sk[0] = statePrefix
+		copy(sk[1:], prefix[1:])
+		prefixes = [][]byte{ck, sk}
+	}
+	return prefixes
 }
