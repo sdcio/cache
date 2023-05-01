@@ -166,22 +166,6 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 				fmt.Println("fail stream", err)
 				os.Exit(1)
 			}
-			go func() {
-				// defer wg1.Done()
-				for {
-					rsp, err := modStream.Recv()
-					if err != nil {
-						if strings.Contains(err.Error(), "EOF") {
-							return
-						}
-						log.Errorf("fail rcv: %v", err)
-						return
-					}
-					if rsp.GetWrite().GetError() != "" {
-						log.Errorf("err: %s", rsp.GetWrite().GetError())
-					}
-				}
-			}()
 			for j := int64(0); j < numPaths; j++ {
 				tv := &schemapb.TypedValue{
 					Value: &schemapb.TypedValue_StringVal{
@@ -195,10 +179,10 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 							Name: fmt.Sprintf("cache-instance-%d", i),
 							Path: []string{
 								"A",
-								fmt.Sprintf("ABCD%d", i),
-								fmt.Sprintf("ABCD%d", i+j),
-								fmt.Sprintf("ABCD%d", i+2*j),
-								fmt.Sprintf("ABCD%d", i+3*j),
+								fmt.Sprintf("abcd%d", i),
+								fmt.Sprintf("abcd%d", (i+1)*j),
+								fmt.Sprintf("abcd%d", (i+2)*j),
+								fmt.Sprintf("abcd%d", (i+3)*j),
 							},
 							Value: &anypb.Any{
 								Value: b,
@@ -206,13 +190,18 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 						},
 					},
 				})
-				// fmt.Println("sent", i, i+j)
 				if err != nil {
-					log.Error("fail send", err)
+					log.Errorf("fail send: %v", err)
 					os.Exit(1)
 				}
 			}
-			modStream.CloseSend()
+			_, err = modStream.CloseAndRecv()
+			if err != nil {
+				if !strings.Contains(err.Error(), "EOF") {
+					log.Errorf("fail closeAndRecv: %v", err)
+					os.Exit(1)
+				}
+			}
 			durs <- time.Since(now)
 			time.Sleep(1 * time.Second)
 		}(i)

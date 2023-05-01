@@ -152,31 +152,6 @@ func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, d
 	if err != nil {
 		return err
 	}
-	errs := make([]error, 0)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			rsp, err := stream.Recv()
-			if err != nil {
-				if strings.Contains(err.Error(), "EOF") {
-					return
-				}
-				errs = append(errs, err)
-				return
-			}
-			switch rsp := rsp.Response.(type) {
-			case *cachepb.ModifyResponse_Write:
-				if rsp.Write.Error != "" {
-					errs = append(errs, fmt.Errorf("%v", rsp.Write.Error))
-				}
-			case *cachepb.ModifyResponse_Delete:
-				if rsp.Delete.Error != "" {
-					errs = append(errs, fmt.Errorf("%v", rsp.Delete.Error))
-				}
-			}
-		}
-	}()
 
 	for _, del := range dels {
 		err = stream.Send(&cachepb.ModifyRequest{
@@ -209,12 +184,8 @@ func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, d
 			return err
 		}
 	}
-	stream.CloseSend()
-	<-done
-	if len(errs) > 0 {
-		return fmt.Errorf("%v", errs)
-	}
-	return nil
+	_, err = stream.CloseAndRecv()
+	return err
 }
 
 // Read value(s) from a cache instance
