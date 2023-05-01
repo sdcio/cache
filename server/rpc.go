@@ -122,10 +122,14 @@ func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 	for {
 		req, err := stream.Recv()
 		if err != nil {
+			if strings.Contains(err.Error(), "EOF") {
+				return nil
+			}
+			log.Errorf("peer=%s, Modify Stream ended with err: %v", pr.Addr.String(), err)
 			return err
 		}
 
-		log.Debugf("modifyRequest: %s", req)
+		log.Debugf("peer=%s, modifyRequest: %s", pr.Addr.String(), req)
 		err = s.validateModifyRequest(req)
 		if err != nil {
 			return err

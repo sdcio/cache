@@ -117,7 +117,7 @@ func (c *cacheClient) Modify(ctx context.Context, opts ...grpc.CallOption) (Cach
 
 type Cache_ModifyClient interface {
 	Send(*ModifyRequest) error
-	Recv() (*ModifyResponse, error)
+	CloseAndRecv() (*ModifyResponse, error)
 	grpc.ClientStream
 }
 
@@ -129,7 +129,10 @@ func (x *cacheModifyClient) Send(m *ModifyRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *cacheModifyClient) Recv() (*ModifyResponse, error) {
+func (x *cacheModifyClient) CloseAndRecv() (*ModifyResponse, error) {
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
 	m := new(ModifyResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -397,7 +400,7 @@ func _Cache_Modify_Handler(srv interface{}, stream grpc.ServerStream) error {
 }
 
 type Cache_ModifyServer interface {
-	Send(*ModifyResponse) error
+	SendAndClose(*ModifyResponse) error
 	Recv() (*ModifyRequest, error)
 	grpc.ServerStream
 }
@@ -406,7 +409,7 @@ type cacheModifyServer struct {
 	grpc.ServerStream
 }
 
-func (x *cacheModifyServer) Send(m *ModifyResponse) error {
+func (x *cacheModifyServer) SendAndClose(m *ModifyResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -518,7 +521,6 @@ var Cache_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Modify",
 			Handler:       _Cache_Modify_Handler,
-			ServerStreams: true,
 			ClientStreams: true,
 		},
 		{
