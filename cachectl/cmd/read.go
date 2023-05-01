@@ -16,7 +16,6 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -48,18 +47,17 @@ var readCmd = &cobra.Command{
 		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
+			Timeout:       timeout,
 		})
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithCancel(cmd.Context())
-		defer cancel()
 
 		paths := make([][]string, 0, len(readPath))
 		for _, p := range readPath {
 			paths = append(paths, strings.Split(p, ","))
 		}
-		for rs := range c.Read(ctx, cacheName, store, paths) {
+		for rs := range c.Read(cmd.Context(), cacheName, store, paths) {
 			fmt.Println(prototext.Format(rs))
 		}
 		return nil

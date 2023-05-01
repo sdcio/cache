@@ -265,3 +265,12 @@ func (c *Client) Discard(ctx context.Context, name, candidate string, opts ...gr
 	}, opts...)
 	return err
 }
+
+func (c *Client) Stats(ctx context.Context, name string, withKeyCount bool, opts ...grpc.CallOption) (*cachepb.StatsResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
+	return c.client.Stats(ctx, &cachepb.StatsRequest{
+		Name:      name,
+		KeysCount: withKeyCount,
+	}, opts...)
+}

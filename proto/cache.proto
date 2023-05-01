@@ -27,6 +27,8 @@ service Cache {
     rpc GetChanges(GetChangesRequest)           returns (stream GetChangesResponse);
     // Discard changes made to a candidate
     rpc Discard(DiscardRequest)                 returns (DiscardResponse);
+    // Stats requests statistics from the cache server
+    rpc Stats(StatsRequest)                     returns (StatsResponse);
 }
 //
 message GetRequest{
@@ -139,6 +141,15 @@ message DiscardRequest{
 }
 message DiscardResponse{}
 
+message StatsRequest{
+    string name      = 1;
+    bool   keys_count = 2;
+}
+message StatsResponse{
+    int64                       num_cache = 1;
+    map<string, InstanceStats>  key_count = 2;
+}
+
 // sub messages
 message Update{
     repeated string     path  = 2;
@@ -148,4 +159,9 @@ message Update{
 enum Store {
     CONFIG      = 0;
     STATE       = 1;
+}
+
+message InstanceStats {
+    string name = 1;
+    map<string, int64> key_count_per_bucket = 2;
 }

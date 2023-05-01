@@ -49,11 +49,24 @@ type Cache[T proto.Message] interface {
 	Discard(ctx context.Context, name, candidate string) error
 	// Close the underlying resources, like the persistent store
 	Close() error
+	// Stats
+	Stats(ctx context.Context, name string, withKeysCount bool) (*StatsResponse, error)
+	NumInstances() int
 }
 
 type Entry[T proto.Message] struct {
 	P []string
 	V T
+}
+
+type StatsResponse struct {
+	NumInstances  int
+	InstanceStats map[string]*InstanceStats
+}
+
+type InstanceStats struct {
+	Name     string
+	KeyCount map[string]int64
 }
 
 func New[T proto.Message](cfg *config.CacheConfig, bfn func() T) Cache[T] {

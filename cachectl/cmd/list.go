@@ -16,10 +16,8 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
@@ -35,13 +33,12 @@ var listCmd = &cobra.Command{
 		c, err := client.New(cmd.Context(), &client.ClientConfig{
 			Address:       address,
 			MaxReadStream: 1,
+			Timeout:       timeout,
 		})
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
-		defer cancel()
-		caches, err := c.List(ctx)
+		caches, err := c.List(cmd.Context())
 		if err != nil {
 			return err
 		}

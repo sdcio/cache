@@ -21,6 +21,7 @@ type Store[T proto.Message] interface {
 	GetAll(ctx context.Context, name, bucket string) (chan *KV, error)
 	GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte) (chan *KV, error)
 	Close() error
+	Stats(ctx context.Context, name string) (*StoreStats, error)
 }
 
 type KV struct {
@@ -41,4 +42,9 @@ func New[T proto.Message](typ, p string) Store[T] {
 	default:
 		return newNoopStore[T]()
 	}
+}
+
+type StoreStats struct {
+	NumCache      int
+	KeysPerBucket map[string]int64
 }

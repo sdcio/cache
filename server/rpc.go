@@ -227,6 +227,24 @@ func (s *Server[T]) Discard(ctx context.Context, req *cachepb.DiscardRequest) (*
 	return &cachepb.DiscardResponse{}, nil
 }
 
+func (s *Server[T]) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cachepb.StatsResponse, error) {
+	ss, err := s.cache.Stats(ctx, req.GetName(), req.GetKeysCount())
+	if err != nil {
+		return nil, err
+	}
+	rsp := &cachepb.StatsResponse{
+		NumCache: int64(ss.NumInstances),
+		KeyCount: map[string]*cachepb.InstanceStats{},
+	}
+	for _, ssi := range ss.InstanceStats {
+		rsp.KeyCount[ssi.Name] = &cachepb.InstanceStats{
+			Name:              ssi.Name,
+			KeyCountPerBucket: ssi.KeyCount,
+		}
+	}
+	return rsp, nil
+}
+
 // helpers
 func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
 	ctx := stream.Context()

@@ -16,7 +16,6 @@ limitations under the License.
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/iptecharch/cache/client"
@@ -37,9 +36,7 @@ var getChangesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithCancel(cmd.Context())
-		defer cancel()
-		changes, err := c.GetChanges(ctx, cacheName, candidateName)
+		changes, err := c.GetChanges(cmd.Context(), cacheName, candidateName)
 		if err != nil {
 			return err
 		}
