@@ -159,8 +159,6 @@ func (s *bboltStore[T]) Clone(ctx context.Context, name, cname string) error {
 	}
 }
 
-func (s *bboltStore[T]) SyncCache(ctx context.Context, name string) error { return nil }
-
 func (s *bboltStore[T]) LoadCache(ctx context.Context, name string) error {
 	dbFileName := s.dbFileName(name)
 	db, err := s.openDB(dbFileName)
@@ -274,7 +272,7 @@ func (s *bboltStore[T]) GetAll(ctx context.Context, name, bucket string) (chan *
 	return kvCh, nil
 }
 
-func (s *bboltStore[T]) GetPrefix(ctx context.Context, name, bucket string, prefix []byte) (chan *KV, error) {
+func (s *bboltStore[T]) GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte) (chan *KV, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 

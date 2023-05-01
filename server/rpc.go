@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/iptecharch/cache/cache"
@@ -123,28 +124,42 @@ func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 		if err != nil {
 			return err
 		}
+
 		log.Debugf("modifyRequest: %s", req)
-		switch req := req.Request.(type) {
-		case *cachepb.ModifyRequest_Write:
-			if req.Write.GetName() == "" {
-				return status.Errorf(codes.InvalidArgument, "name cannot be empty")
-			}
-			if len(req.Write.GetPath()) == 0 {
-				return status.Errorf(codes.InvalidArgument, "path cannot be empty")
-			}
-			if req.Write.GetValue() == nil {
-				return status.Errorf(codes.InvalidArgument, "value cannot be nil")
-			}
-		case *cachepb.ModifyRequest_Delete:
-			if req.Delete.GetName() == "" {
-				return status.Errorf(codes.InvalidArgument, "name cannot be empty")
-			}
-			if len(req.Delete.GetPath()) == 0 {
-				return status.Errorf(codes.InvalidArgument, "path cannot be empty")
-			}
+		err = s.validateModifyRequest(req)
+		if err != nil {
+			return err
 		}
 		s.modifyCh <- req
 	}
+}
+
+func (s *Server[T]) validateModifyRequest(req *cachepb.ModifyRequest) error {
+	if req == nil {
+		return errors.New("nil modify request")
+	}
+	switch req := req.GetRequest().(type) {
+	case *cachepb.ModifyRequest_Write:
+		if req.Write.GetName() == "" {
+			return status.Errorf(codes.InvalidArgument, "name cannot be empty")
+		}
+		if len(req.Write.GetPath()) == 0 {
+			return status.Errorf(codes.InvalidArgument, "path cannot be empty")
+		}
+		if req.Write.GetValue() == nil {
+			return status.Errorf(codes.InvalidArgument, "value cannot be nil")
+		}
+	case *cachepb.ModifyRequest_Delete:
+		if req.Delete.GetName() == "" {
+			return status.Errorf(codes.InvalidArgument, "name cannot be empty")
+		}
+		if len(req.Delete.GetPath()) == 0 {
+			return status.Errorf(codes.InvalidArgument, "path cannot be empty")
+		}
+	case nil:
+		return errors.New("nil modify request")
+	}
+	return nil
 }
 
 func (s *Server[T]) GetChanges(req *cachepb.GetChangesRequest, stream cachepb.Cache_GetChangesServer) error {
@@ -235,14 +250,15 @@ OUTER:
 			if err != nil {
 				return err
 			}
-			err = stream.Send(&cachepb.ReadRespone{
+			rsp := &cachepb.ReadRespone{
 				Name: req.GetName(),
 				Path: e.P,
 				Value: &anypb.Any{
 					TypeUrl: "",
 					Value:   b,
 				},
-			})
+			}
+			err = stream.Send(rsp)
 			if err != nil {
 				return err
 			}
@@ -251,7 +267,7 @@ OUTER:
 	return nil
 }
 
-func (s *Server[T]) modifyWrite(req *cachepb.WriteValueRequest, _ cachepb.Cache_ModifyServer) error {
+func (s *Server[T]) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest) error {
 	m := s.bfn()
 	err := proto.Unmarshal(req.GetValue().GetValue(), m)
 	if err != nil {
@@ -265,9 +281,6 @@ func (s *Server[T]) modifyWrite(req *cachepb.WriteValueRequest, _ cachepb.Cache_
 		store = cache.StoreState
 	}
 
-	// ctx := stream.Context()
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
 	err = s.cache.WriteValue(ctx, req.GetName(), store, req.GetPath(), m)
 	if err != nil {
 		return err
@@ -275,7 +288,7 @@ func (s *Server[T]) modifyWrite(req *cachepb.WriteValueRequest, _ cachepb.Cache_
 	return nil
 }
 
-func (s *Server[T]) modifyDelete(req *cachepb.DeleteValueRequest, _ cachepb.Cache_ModifyServer) error {
+func (s *Server[T]) modifyDelete(ctx context.Context, req *cachepb.DeleteValueRequest) error {
 	var err error
 	// delete value from cache
 	var store cache.Store
@@ -286,8 +299,6 @@ func (s *Server[T]) modifyDelete(req *cachepb.DeleteValueRequest, _ cachepb.Cach
 		store = cache.StoreState
 	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
 	err = s.cache.DeleteValue(ctx, req.GetName(), store, req.GetPath())
 	if err != nil {
 		return err

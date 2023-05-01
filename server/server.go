@@ -21,6 +21,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const (
+	writeTimeout = 30 * time.Second
+)
+
 type Server[T proto.Message] struct {
 	cfg *config.Config
 
@@ -143,19 +147,20 @@ func (s *Server[T]) writeWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case req := <-s.modifyCh:
+			ctx, cancel := context.WithTimeout(ctx, writeTimeout)
 			switch req := req.Request.(type) {
 			case *cachepb.ModifyRequest_Write:
-				err = s.modifyWrite(req.Write, nil)
+				err = s.modifyWrite(ctx, req.Write)
 				if err != nil {
 					log.Errorf("failed modify write: %v", err)
 				}
 			case *cachepb.ModifyRequest_Delete:
-				err = s.modifyDelete(req.Delete, nil)
+				err = s.modifyDelete(ctx, req.Delete)
 				if err != nil {
 					log.Errorf("failed modify delete: %v", err)
 				}
 			}
+			cancel()
 		}
 	}
-
 }

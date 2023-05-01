@@ -12,18 +12,14 @@ type Store[T proto.Message] interface {
 	DeleteCache(ctx context.Context, name string) error
 	Clone(ctx context.Context, name, cname string) error
 	GetCacheConfig(ctx context.Context, name string) (map[string]any, error)
-
-	SyncCache(ctx context.Context, name string) error
 	// create cache from persistent storage, does not load KVs
 	LoadCache(ctx context.Context, name string) error
-
 	WriteValue(ctx context.Context, name, bucket string, k []byte, v T) error
 	WriteBytesValue(ctx context.Context, name, bucket string, k []byte, v []byte) error
 	GetValue(ctx context.Context, name, bucket string, k []byte) ([]byte, error)
 	DeleteValue(ctx context.Context, name, bucket string, k []byte) error
 	GetAll(ctx context.Context, name, bucket string) (chan *KV, error)
-	GetPrefix(ctx context.Context, name, bucket string, prefix []byte) (chan *KV, error)
-
+	GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte) (chan *KV, error)
 	Close() error
 }
 

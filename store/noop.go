@@ -21,7 +21,6 @@ func (s *noopStore[T]) Clone(ctx context.Context, name, cname string) error { re
 func (s *noopStore[T]) GetCacheConfig(ctx context.Context, name string) (map[string]any, error) {
 	return nil, nil
 }
-func (s *noopStore[T]) SyncCache(ctx context.Context, name string) error { return nil }
 func (s *noopStore[T]) LoadCache(ctx context.Context, name string) error { return nil }
 func (s *noopStore[T]) WriteValue(ctx context.Context, name, bucket string, k []byte, v T) error {
 	return nil
@@ -38,8 +37,7 @@ func (s *noopStore[T]) DeleteValue(ctx context.Context, name, bucket string, k [
 func (s *noopStore[T]) GetAll(ctx context.Context, name, bucket string) (chan *KV, error) {
 	return nil, nil
 }
-func (s *noopStore[T]) GetPrefix(ctx context.Context, name, bucket string, prefix []byte) (chan *KV, error) {
+func (s *noopStore[T]) GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte) (chan *KV, error) {
 	return nil, nil
 }
-
 func (s *noopStore[T]) Close() error { return nil }
