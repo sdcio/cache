@@ -185,6 +185,9 @@ func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, d
 		}
 	}
 	_, err = stream.CloseAndRecv()
+	if strings.Contains(err.Error(), "EOF") {
+		return nil
+	}
 	return err
 }
 

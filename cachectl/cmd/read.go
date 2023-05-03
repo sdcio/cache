@@ -16,17 +16,21 @@ limitations under the License.
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/iptecharch/cache/client"
 	"github.com/iptecharch/cache/proto/cachepb"
+	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/proto"
 )
 
 var readPath []string
 var storeName string
+var format string
 
 // readCmd represents the read command
 var readCmd = &cobra.Command{
@@ -58,7 +62,23 @@ var readCmd = &cobra.Command{
 			paths = append(paths, strings.Split(p, ","))
 		}
 		for rs := range c.Read(cmd.Context(), cacheName, store, paths) {
-			fmt.Println(prototext.Format(rs))
+			switch format {
+			case "":
+				fmt.Println(prototext.Format(rs))
+			case "json":
+				b, err := json.MarshalIndent(rs, "", "  ")
+				if err != nil {
+					return err
+				}
+				fmt.Println(string(b))
+			case "flat":
+				tv := new(schemapb.TypedValue)
+				err = proto.Unmarshal(rs.GetValue().GetValue(), tv)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("%s: %s\n", strings.Join(rs.GetPath(), "/"), tvSPrint(tv))
+			}
 		}
 		return nil
 	},
@@ -69,4 +89,33 @@ func init() {
 	readCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
 	readCmd.Flags().StringArrayVarP(&readPath, "path", "p", []string{}, "paths to read")
 	readCmd.Flags().StringVarP(&storeName, "store", "s", "config", "cache store to read from")
+	readCmd.Flags().StringVarP(&format, "format", "", "", "print format, '', 'flat' or 'json'")
+}
+
+func tvSPrint(tv *schemapb.TypedValue) string {
+	switch v := tv.Value.(type) {
+	case *schemapb.TypedValue_AnyVal:
+	case *schemapb.TypedValue_AsciiVal:
+		return v.AsciiVal
+	case *schemapb.TypedValue_BoolVal:
+		return fmt.Sprintf("%t", v.BoolVal)
+	case *schemapb.TypedValue_BytesVal:
+		return fmt.Sprintf("%b", v.BytesVal)
+	case *schemapb.TypedValue_DecimalVal:
+	case *schemapb.TypedValue_DoubleVal:
+	case *schemapb.TypedValue_FloatVal:
+	case *schemapb.TypedValue_IntVal:
+		return fmt.Sprintf("%d", v.IntVal)
+	case *schemapb.TypedValue_JsonIetfVal:
+		return string(v.JsonIetfVal)
+	case *schemapb.TypedValue_JsonVal:
+		return string(v.JsonVal)
+	case *schemapb.TypedValue_LeaflistVal:
+	case *schemapb.TypedValue_ProtoBytes:
+	case *schemapb.TypedValue_StringVal:
+		return v.StringVal
+	case *schemapb.TypedValue_UintVal:
+		return fmt.Sprintf("%d", v.UintVal)
+	}
+	return ""
 }

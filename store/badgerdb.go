@@ -14,6 +14,7 @@ import (
 
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
+	"github.com/dgraph-io/ristretto/z"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -292,9 +293,30 @@ func (s *badgerDBStore[T]) GetAll(ctx context.Context, name, bucket string) (cha
 	kvCh := make(chan *KV)
 	go func() {
 		defer close(kvCh)
-		err := db.db.View(badgerGetAllFn(ctx, name, bucket, kvCh))
-		if err != nil {
-			log.Errorf("failed to read all values from cache/bucket %s/%s: %v", name, bucket, err)
+		stream := db.db.NewStream()
+		stream.NumGo = 4 // TODO:
+		stream.ChooseKey = func(item *badger.Item) bool {
+			if bucket == "" {
+				return item.Key()[0] != cacheConfigPrefix
+			}
+			switch bucket {
+			case "config":
+				return item.Key()[0] == configPrefix
+			case "state":
+				return item.Key()[0] == statePrefix
+			default:
+				return false
+			}
+		}
+		stream.Send = func(buf *z.Buffer) error {
+			kvs, err := badger.BufferToKVList(buf)
+			if err != nil {
+				return err
+			}
+			for _, kv := range kvs.GetKv() {
+				kvToChan(kv.GetKey()[1:], kv.GetKey(), kvCh)
+			}
+			return nil
 		}
 	}()
 
@@ -486,6 +508,7 @@ func badgerGetPrefixFn(ctx context.Context, indexName, bucket string, prefix, pa
 				if withPattern && !re.Match(k[1:]) {
 					continue
 				}
+
 				err := item.Value(func(v []byte) error {
 					kvToChan(k[1:], v, kvCh)
 					return nil
