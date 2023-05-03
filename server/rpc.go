@@ -102,6 +102,16 @@ func (s *Server[T]) Delete(ctx context.Context, req *cachepb.DeleteRequest) (*ca
 	return &cachepb.DeleteResponse{}, nil
 }
 
+func (s *Server[T]) Exists(ctx context.Context, req *cachepb.ExistsRequest) (*cachepb.ExistsResponse, error) {
+	log.Debugf("received exists request %v", req)
+	if req.GetName() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
+	}
+	return &cachepb.ExistsResponse{
+		Exists: s.cache.Exists(ctx, req.GetName()),
+	}, nil
+}
+
 func (s *Server[T]) List(ctx context.Context, req *cachepb.ListRequest) (*cachepb.ListResponse, error) {
 	return &cachepb.ListResponse{
 		Cache: s.cache.List(ctx),
@@ -259,14 +269,13 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 	if err != nil {
 		return err
 	}
-OUTER:
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case e, ok := <-ch:
 			if !ok {
-				break OUTER
+				return nil
 			}
 			b, err := proto.Marshal(e.V)
 			if err != nil {
@@ -276,8 +285,7 @@ OUTER:
 				Name: req.GetName(),
 				Path: e.P,
 				Value: &anypb.Any{
-					TypeUrl: "",
-					Value:   b,
+					Value: b,
 				},
 			}
 			err = stream.Send(rsp)
@@ -286,7 +294,6 @@ OUTER:
 			}
 		}
 	}
-	return nil
 }
 
 func (s *Server[T]) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest) error {

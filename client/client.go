@@ -120,6 +120,16 @@ func (c *Client) Delete(ctx context.Context, name string, opts ...grpc.CallOptio
 	return err
 }
 
+func (c *Client) Exists(ctx context.Context, name string, opts ...grpc.CallOption) (bool, error) {
+	rsp, err := c.client.Exists(ctx, &cachepb.ExistsRequest{
+		Name: name,
+	}, opts...)
+	if err != nil {
+		return false, err
+	}
+	return rsp.GetExists(), nil
+}
+
 // Create a Candidate
 func (c *Client) CreateCandidate(ctx context.Context, name, candidate string, opts ...grpc.CallOption) error {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)

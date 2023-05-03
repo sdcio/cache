@@ -30,6 +30,8 @@ type CacheClient interface {
 	Create(ctx context.Context, in *CreateRequest, opts ...grpc.CallOption) (*CreateResponse, error)
 	// Delete a cache instance
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	// Exists check if a cache instance exists
+	Exists(ctx context.Context, in *ExistsRequest, opts ...grpc.CallOption) (*ExistsResponse, error)
 	// Create a Candidate
 	CreateCandidate(ctx context.Context, in *CreateCandidateRequest, opts ...grpc.CallOption) (*CreateCandidateResponse, error)
 	// Clone a cache
@@ -84,6 +86,15 @@ func (c *cacheClient) Create(ctx context.Context, in *CreateRequest, opts ...grp
 func (c *cacheClient) Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
 	out := new(DeleteResponse)
 	err := c.cc.Invoke(ctx, "/cache.proto.Cache/Delete", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cacheClient) Exists(ctx context.Context, in *ExistsRequest, opts ...grpc.CallOption) (*ExistsResponse, error) {
+	out := new(ExistsResponse)
+	err := c.cc.Invoke(ctx, "/cache.proto.Cache/Exists", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +247,8 @@ type CacheServer interface {
 	Create(context.Context, *CreateRequest) (*CreateResponse, error)
 	// Delete a cache instance
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
+	// Exists check if a cache instance exists
+	Exists(context.Context, *ExistsRequest) (*ExistsResponse, error)
 	// Create a Candidate
 	CreateCandidate(context.Context, *CreateCandidateRequest) (*CreateCandidateResponse, error)
 	// Clone a cache
@@ -268,6 +281,9 @@ func (UnimplementedCacheServer) Create(context.Context, *CreateRequest) (*Create
 }
 func (UnimplementedCacheServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedCacheServer) Exists(context.Context, *ExistsRequest) (*ExistsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Exists not implemented")
 }
 func (UnimplementedCacheServer) CreateCandidate(context.Context, *CreateCandidateRequest) (*CreateCandidateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateCandidate not implemented")
@@ -371,6 +387,24 @@ func _Cache_Delete_Handler(srv interface{}, ctx context.Context, dec func(interf
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CacheServer).Delete(ctx, req.(*DeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Cache_Exists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExistsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CacheServer).Exists(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cache.proto.Cache/Exists",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CacheServer).Exists(ctx, req.(*ExistsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -537,6 +571,10 @@ var Cache_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _Cache_Delete_Handler,
+		},
+		{
+			MethodName: "Exists",
+			Handler:    _Cache_Exists_Handler,
 		},
 		{
 			MethodName: "CreateCandidate",

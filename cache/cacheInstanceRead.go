@@ -80,7 +80,10 @@ func (ci *cacheInstance[T]) readValueCh(ctx context.Context, cname string, store
 	}
 	rsCh := make(chan *Entry[T])
 	go func() {
-		defer close(rsCh)
+		defer func() {
+			close(rsCh)
+			log.Debugf("read from %s/%s to channel done", ci.cfg.Name, cname)
+		}()
 		var err error
 		found := make(map[string]struct{})
 		// check if the path exists in the candidate
@@ -220,7 +223,11 @@ func (ci *cacheInstance[T]) readFromTreesCh(ctx context.Context, cname string, s
 						P: path,
 						V: vt,
 					}
-					rsCh <- e
+					select {
+					case rsCh <- e:
+					case <-ctx.Done():
+						return ctx.Err()
+					}
 					return nil
 				},
 			)
@@ -283,7 +290,11 @@ func (ci *cacheInstance[T]) readPrefixFromStoreCh(ctx context.Context, bucket st
 				P: strings.Split(string(v.K), ","),
 				V: pv,
 			}
-			kvCh <- entry
+			select {
+			case kvCh <- entry:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }

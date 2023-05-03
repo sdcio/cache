@@ -27,13 +27,15 @@ type Cache[T proto.Message] interface {
 	// Delete a cache instance or a candidate in a cache instance.
 	// the name should be in the format $cache/$candidate to delete a candidate
 	Delete(ctx context.Context, name string) error
+	// Exists return true if a cache instance called 'name' exists,
+	// false otherwise
+	Exists(ctx context.Context, name string) bool
 	// Clone a cache instance
 	Clone(ctx context.Context, name, cname string) (string, error)
 	// Create a candidate for an existing cache instance
 	CreateCandidate(ctx context.Context, name, candidate string) (string, error)
 	// Candidates returns the list of candidates created for a cache instance
 	Candidates(ctx context.Context, name string) ([]string, error)
-	//
 	// WriteValue writes a new value in a cache instance.
 	// the value can be written into 2 different stores, CONFIG or STATE
 	WriteValue(ctx context.Context, name string, store Store, p []string, v T) error

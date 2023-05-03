@@ -92,6 +92,7 @@ func init() {
 	readCmd.Flags().StringVarP(&format, "format", "", "", "print format, '', 'flat' or 'json'")
 }
 
+// TODO: finish all types
 func tvSPrint(tv *schemapb.TypedValue) string {
 	switch v := tv.Value.(type) {
 	case *schemapb.TypedValue_AnyVal:

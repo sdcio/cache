@@ -145,6 +145,11 @@ func (c *cache[T]) Delete(ctx context.Context, name string) error {
 	return nil
 }
 
+func (c *cache[T]) Exists(ctx context.Context, name string) bool {
+	_, ok := c.getCacheInstance(ctx, name)
+	return ok
+}
+
 func (c *cache[T]) Clone(ctx context.Context, name, cname string) (string, error) {
 	ci, ok := c.getCacheInstance(ctx, name)
 	if !ok {
