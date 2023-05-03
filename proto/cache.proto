@@ -24,7 +24,7 @@ service Cache {
     // modify a cache instance
     rpc Modify(stream ModifyRequest)            returns (ModifyResponse);
     // Read value(s) from a cache instance
-    rpc Read(ReadRequest)                       returns (stream ReadRespone);
+    rpc Read(ReadRequest)                       returns (stream ReadResponse);
     // GetChanges made to a candidate
     rpc GetChanges(GetChangesRequest)           returns (stream GetChangesResponse);
     // Discard changes made to a candidate
@@ -115,7 +115,7 @@ message ReadRequest{
     repeated string         path  = 3;
     Store                   store = 4;
 }
-message ReadRespone{
+message ReadResponse{
     string              name  = 2;
     repeated string     path  = 3;
     google.protobuf.Any value = 4;

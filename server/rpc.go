@@ -281,7 +281,7 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 			if err != nil {
 				return err
 			}
-			rsp := &cachepb.ReadRespone{
+			rsp := &cachepb.ReadResponse{
 				Name: req.GetName(),
 				Path: e.P,
 				Value: &anypb.Any{

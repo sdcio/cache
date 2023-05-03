@@ -169,7 +169,7 @@ func (c *cacheClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc.Ca
 }
 
 type Cache_ReadClient interface {
-	Recv() (*ReadRespone, error)
+	Recv() (*ReadResponse, error)
 	grpc.ClientStream
 }
 
@@ -177,8 +177,8 @@ type cacheReadClient struct {
 	grpc.ClientStream
 }
 
-func (x *cacheReadClient) Recv() (*ReadRespone, error) {
-	m := new(ReadRespone)
+func (x *cacheReadClient) Recv() (*ReadResponse, error) {
+	m := new(ReadResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func _Cache_Read_Handler(srv interface{}, stream grpc.ServerStream) error {
 }
 
 type Cache_ReadServer interface {
-	Send(*ReadRespone) error
+	Send(*ReadResponse) error
 	grpc.ServerStream
 }
 
@@ -488,7 +488,7 @@ type cacheReadServer struct {
 	grpc.ServerStream
 }
 
-func (x *cacheReadServer) Send(m *ReadRespone) error {
+func (x *cacheReadServer) Send(m *ReadResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
