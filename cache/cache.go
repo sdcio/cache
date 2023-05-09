@@ -40,9 +40,7 @@ type Cache[T proto.Message] interface {
 	// the value can be written into 2 different stores, CONFIG or STATE
 	WriteValue(ctx context.Context, name string, store Store, p []string, v T) error
 	// ReadValue reads a value from a cache instance.
-	ReadValue(ctx context.Context, name string, store Store, p []string) ([]*Entry[T], error)
-	// ReadValueCh reads a value from a cache instance.
-	ReadValueCh(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error)
+	ReadValue(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error)
 	// DeleteValue deletes a value from a cache instance.
 	DeleteValue(ctx context.Context, name string, store Store, p []string) error
 	// Diff returns the changes made to a candidate

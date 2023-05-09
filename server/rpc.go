@@ -7,6 +7,7 @@ import (
 
 	"github.com/iptecharch/cache/cache"
 	"github.com/iptecharch/cache/proto/cachepb"
+	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
@@ -121,14 +122,20 @@ func (s *Server[T]) List(ctx context.Context, req *cachepb.ListRequest) (*cachep
 func (s *Server[T]) Read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
 	ctx := stream.Context()
 	pr, _ := peer.FromContext(ctx)
-	log.Debugf("Read request from peer: %v: %v", pr.Addr, req)
+	id := xid.New()
+	// TODO: change to Debugf
+	log.Infof("%s: Read request from peer: %v: %v", id.String(), pr.Addr, req)
+	defer log.Infof("%s: Read request from peer %v done", id.String(), pr.Addr)
 	return s.read(req, stream)
 }
 
 func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 	ctx := stream.Context()
 	pr, _ := peer.FromContext(ctx)
-	log.Debugf("Modify stream from peer: %v", pr.Addr)
+	id := xid.New()
+	// TODO: change to Debugf
+	log.Infof("%s: Modify stream from peer: %v", id.String(), pr.Addr)
+	defer log.Infof("%s: Modify stream from peer %v done", id.String(), pr.Addr)
 	for {
 		req, err := stream.Recv()
 		if err != nil {
@@ -144,7 +151,11 @@ func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 		if err != nil {
 			return err
 		}
-		s.modifyCh <- req
+		select {
+		case s.modifyCh <- req:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }
 
@@ -265,7 +276,7 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 	case cachepb.Store_STATE:
 		store = cache.StoreState
 	}
-	ch, err := s.cache.ReadValueCh(ctx, req.GetName(), store, req.GetPath())
+	ch, err := s.cache.ReadValue(ctx, req.GetName(), store, req.GetPath())
 	if err != nil {
 		return err
 	}
@@ -310,15 +321,10 @@ func (s *Server[T]) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequ
 		store = cache.StoreState
 	}
 
-	err = s.cache.WriteValue(ctx, req.GetName(), store, req.GetPath(), m)
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.cache.WriteValue(ctx, req.GetName(), store, req.GetPath(), m)
 }
 
 func (s *Server[T]) modifyDelete(ctx context.Context, req *cachepb.DeleteValueRequest) error {
-	var err error
 	// delete value from cache
 	var store cache.Store
 	switch req.GetStore() {
@@ -328,9 +334,5 @@ func (s *Server[T]) modifyDelete(ctx context.Context, req *cachepb.DeleteValueRe
 		store = cache.StoreState
 	}
 
-	err = s.cache.DeleteValue(ctx, req.GetName(), store, req.GetPath())
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.cache.DeleteValue(ctx, req.GetName(), store, req.GetPath())
 }
