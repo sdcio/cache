@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 
 	"google.golang.org/protobuf/proto"
@@ -12,7 +13,6 @@ type Store[T proto.Message] interface {
 	DeleteCache(ctx context.Context, name string) error
 	Clone(ctx context.Context, name, cname string) error
 	GetCacheConfig(ctx context.Context, name string) (map[string]any, error)
-	// create cache from persistent storage, does not load KVs
 	LoadCache(ctx context.Context, name string) error
 	WriteValue(ctx context.Context, name, bucket string, k []byte, v T) error
 	WriteBytesValue(ctx context.Context, name, bucket string, k []byte, v []byte) error
@@ -20,13 +20,37 @@ type Store[T proto.Message] interface {
 	DeleteValue(ctx context.Context, name, bucket string, k []byte) error
 	GetAll(ctx context.Context, name, bucket string) (chan *KV, error)
 	GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte) (chan *KV, error)
+
+	// Get(ctx context.Context, name, bucket string, fn ...SelectFn) (chan *KV, error)
+
 	Close() error
 	Stats(ctx context.Context, name string) (*StoreStats, error)
 }
 
+type SelectFn func(k []byte) bool
+
 type KV struct {
 	K, V []byte
 }
+
+// store.Get(ctx context.Context, name, bucket string, store.WithPrefix([]byte("configure")))
+
+func WithPrefix(prefix []byte) SelectFn {
+	return func(k []byte) bool {
+		return bytes.HasPrefix(prefix, k)
+	}
+}
+
+// func CombineSelect(fns ...SelectFn) SelectFn {
+// 	return func(k []byte) bool {
+// 		for _, fn := range fns {
+// 			if !fn(k) {
+// 				return false
+// 			}
+// 		}
+// 		return true
+// 	}
+// }
 
 const (
 	storeTypeBoltDB   = "boltdb"

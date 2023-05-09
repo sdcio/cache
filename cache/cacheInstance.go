@@ -39,8 +39,8 @@ type CacheInstanceConfig struct {
 	Dir       string
 }
 
-func createCacheInstance[T proto.Message](ctx context.Context, cfg *CacheInstanceConfig, bfn func() T) (*cacheInstance[T], error) {
-	ci := newCacheInstance(cfg, bfn)
+func createCacheInstance[T proto.Message](ctx context.Context, cfg *CacheInstanceConfig, bfn func() T, storage store.Store[T]) (*cacheInstance[T], error) {
+	ci := newCacheInstance(cfg, bfn, storage)
 	storeConfig := map[string]any{
 		"cached": cfg.Cached,
 	}
@@ -48,17 +48,16 @@ func createCacheInstance[T proto.Message](ctx context.Context, cfg *CacheInstanc
 	return ci, err
 }
 
-func newCacheInstance[T proto.Message](cfg *CacheInstanceConfig, bfn func() T) *cacheInstance[T] {
-	ci := &cacheInstance[T]{
+func newCacheInstance[T proto.Message](cfg *CacheInstanceConfig, bfn func() T, storage store.Store[T]) *cacheInstance[T] {
+	return &cacheInstance[T]{
 		cfg:        cfg,
 		config:     &ctree.Tree{},
 		state:      &ctree.Tree{},
 		m:          &sync.RWMutex{},
 		candidates: map[string]*candidate[T]{},
 		bFn:        bfn,
+		store:      storage,
 	}
-	ci.store = store.New[T](cfg.StoreType, cfg.Dir)
-	return ci
 }
 
 type candidate[T proto.Message] struct {
@@ -261,7 +260,9 @@ func (ci *cacheInstance[T]) clone(ctx context.Context, cname string) (*cacheInst
 			Ephemeral: ci.cfg.Ephemeral,
 			Cached:    ci.cfg.Cached,
 			Dir:       ci.cfg.Dir,
-		}, ci.bFn)
+		}, ci.bFn,
+		ci.store,
+	)
 	if err != nil {
 		return nil, err
 	}

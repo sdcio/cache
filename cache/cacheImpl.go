@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/iptecharch/cache/config"
+	"github.com/iptecharch/cache/store"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -18,6 +19,7 @@ type cache[T proto.Message] struct {
 	m      *sync.RWMutex
 	caches map[string]*cacheInstance[T]
 	bFn    func() T
+	store  store.Store[T]
 }
 
 func (c *cache[T]) Init(ctx context.Context) error {
@@ -38,6 +40,8 @@ func (c *cache[T]) Init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	c.store = store.New[T](c.cfg.StoreType, c.cfg.Dir)
+
 	log.Info("loading caches...")
 	wg := new(sync.WaitGroup)
 	for _, dir := range dirs {
@@ -54,7 +58,7 @@ func (c *cache[T]) Init(ctx context.Context) error {
 			Dir:       c.cfg.Dir,
 		}
 
-		ci := newCacheInstance(ccfg, c.bFn)
+		ci := newCacheInstance(ccfg, c.bFn, c.store)
 
 		err = ci.initFromStore(ctx, wg)
 		if err != nil {
@@ -104,7 +108,7 @@ func (c *cache[T]) Create(ctx context.Context, cfg *CacheInstanceConfig) error {
 		return fmt.Errorf("cache %q already exists", cfg.Name)
 	}
 
-	ci, err := createCacheInstance(ctx, cfg, c.bFn)
+	ci, err := createCacheInstance(ctx, cfg, c.bFn, c.store)
 	if err != nil {
 		return err
 	}
@@ -195,19 +199,7 @@ func (c *cache[T]) WriteValue(ctx context.Context, name string, store Store, p [
 	return ci.writeValue(ctx, cname, store, p, v)
 }
 
-func (c *cache[T]) ReadValue(ctx context.Context, name string, store Store, p []string) ([]*Entry[T], error) {
-	var cname string
-	name, cname = splitCacheName(name)
-
-	ci, ok := c.getCacheInstance(ctx, name)
-	if !ok {
-		return nil, fmt.Errorf("cache %q does not exist", name)
-	}
-
-	return ci.readValue(ctx, cname, store, p)
-}
-
-func (c *cache[T]) ReadValueCh(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error) {
+func (c *cache[T]) ReadValue(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error) {
 	var cname string
 	name, cname = splitCacheName(name)
 

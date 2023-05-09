@@ -263,7 +263,7 @@ func (s *bboltStore[T]) GetAll(ctx context.Context, name, bucket string) (chan *
 	kvCh := make(chan *KV)
 	go func() {
 		defer close(kvCh)
-		err := db.View(boltDBGetAllFn(name, bucket, kvCh))
+		err := db.View(boltDBGetAllFn(ctx, name, bucket, kvCh))
 		if err != nil {
 			log.Errorf("failed to read all values from cache/bucket %s/%s: %v", name, bucket, err)
 		}
@@ -284,7 +284,7 @@ func (s *bboltStore[T]) GetPrefix(ctx context.Context, name, bucket string, pref
 	kvCh := make(chan *KV)
 	go func() {
 		defer close(kvCh)
-		err := db.View(boltDBGetPrefixFn(name, bucket, prefix, kvCh))
+		err := db.View(boltDBGetPrefixFn(ctx, name, bucket, prefix, kvCh))
 		if err != nil {
 			log.Errorf("failed to read values based on prefix from cache %s: %v", name, err)
 		}
@@ -319,7 +319,7 @@ func (s *bboltStore[T]) openDB(name string) (*bolt.DB, error) {
 
 // boltDBGetAllFn builds a function that can be passed to db.View()
 // it reads all the KV from an index and writes the KV pair to the channel KvCh
-func boltDBGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *bolt.Tx) error {
+func boltDBGetAllFn(ctx context.Context, indexName, bucket string, kvCh chan *KV) func(tx *bolt.Tx) error {
 	return func(tx *bolt.Tx) error {
 		// specific bucket
 		if bucket != "" {
@@ -328,7 +328,7 @@ func boltDBGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *bolt.Tx) e
 				return fmt.Errorf("bucket %s does not exist", bucket)
 			}
 			err := b.ForEach(func(k, v []byte) error {
-				kvToChan(k, v, kvCh)
+				kvToChan(ctx, k, v, kvCh)
 				return nil
 			})
 			return err
@@ -343,7 +343,7 @@ func boltDBGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *bolt.Tx) e
 				}
 				err := b.ForEach(
 					func(k, v []byte) error {
-						kvToChan(k, v, kvCh)
+						kvToChan(ctx, k, v, kvCh)
 						return nil
 					})
 				return err
@@ -353,7 +353,7 @@ func boltDBGetAllFn(indexName, bucket string, kvCh chan *KV) func(tx *bolt.Tx) e
 }
 
 // TODO: needs a context for cancellation
-func boltDBGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) func(tx *bolt.Tx) error {
+func boltDBGetPrefixFn(ctx context.Context, indexName, bucket string, prefix []byte, kvCh chan *KV) func(tx *bolt.Tx) error {
 	return func(tx *bolt.Tx) error {
 		// specific bucket
 		if bucket != "" {
@@ -364,7 +364,7 @@ func boltDBGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) f
 
 			c := b.Cursor()
 			for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
-				kvToChan(k, v, kvCh)
+				kvToChan(ctx, k, v, kvCh)
 			}
 			return nil
 		}
@@ -378,7 +378,7 @@ func boltDBGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) f
 				}
 				c := b.Cursor()
 				for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
-					kvToChan(k, v, kvCh)
+					kvToChan(ctx, k, v, kvCh)
 				}
 				return nil
 			})
@@ -386,15 +386,20 @@ func boltDBGetPrefixFn(indexName, bucket string, prefix []byte, kvCh chan *KV) f
 	}
 }
 
-func kvToChan(k, v []byte, kvCh chan *KV) {
+func kvToChan(ctx context.Context, k, v []byte, kvCh chan *KV) {
 	kb := make([]byte, len(k))
 	vb := make([]byte, len(v))
 	copy(kb, k)
 	copy(vb, v)
-	kvCh <- &KV{
+	select {
+	case kvCh <- &KV{
 		K: kb,
 		V: vb,
+	}:
+	case <-ctx.Done():
+		return
 	}
+
 }
 
 func (s *bboltStore[T]) dbFileName(cacheName string) string {

@@ -58,7 +58,7 @@ bin/cachectl list
 
 ## benchmark against the lab in labs/single
 
-### resources:
+### resources
 
 ```yaml
 cpu-set: 0-7

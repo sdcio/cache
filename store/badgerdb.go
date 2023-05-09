@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	badger "github.com/dgraph-io/badger/v4"
@@ -32,8 +33,9 @@ type badgerDBStore[T proto.Message] struct {
 }
 
 type bdb struct {
-	db  *badger.DB
-	cfn context.CancelFunc
+	db         *badger.DB
+	cfn        context.CancelFunc
+	writeCount atomic.Uint64
 }
 
 func newBadgerDBStore[T proto.Message](p string) Store[T] {
@@ -45,7 +47,9 @@ func newBadgerDBStore[T proto.Message](p string) Store[T] {
 }
 
 func (s *badgerDBStore[T]) CreateCache(ctx context.Context, name string, cfg map[string]any, bucket ...string) error {
-	bdb := &bdb{}
+	bdb := &bdb{
+		writeCount: atomic.Uint64{},
+	}
 	dbCtx, cancel := context.WithCancel(context.Background())
 	bdb.cfn = cancel
 
@@ -54,7 +58,16 @@ func (s *badgerDBStore[T]) CreateCache(ctx context.Context, name string, cfg map
 	if err != nil {
 		return err
 	}
-
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Minute):
+				log.Infof("%s write count %d", name, bdb.writeCount.Load())
+			}
+		}
+	}()
 	// create buckets
 	err = bdb.db.Update(func(tx *badger.Txn) error {
 		// create cache config
@@ -198,8 +211,15 @@ func (s *badgerDBStore[T]) WriteValue(ctx context.Context, name, bucket string, 
 }
 
 func (s *badgerDBStore[T]) WriteBytesValue(ctx context.Context, name, bucket string, k []byte, v []byte) error {
-	if bucket == "" {
-		return errors.New("a bucket name must be specified")
+	k = append(k, 0)
+	copy(k[1:], k)
+	switch bucket {
+	case "config":
+		k[0] = configPrefix
+	case "state":
+		k[0] = statePrefix
+	default:
+		return fmt.Errorf("unknown bucket name %q", bucket)
 	}
 	s.m.RLock()
 	defer s.m.RUnlock()
@@ -208,16 +228,15 @@ func (s *badgerDBStore[T]) WriteBytesValue(ctx context.Context, name, bucket str
 	if !ok {
 		return fmt.Errorf("unknown cache name %s", name)
 	}
+
 	err := db.db.Update(func(tx *badger.Txn) error {
-		k = append(k, 0)
-		copy(k[1:], k)
-		switch bucket {
-		case "config":
-			k[0] = configPrefix
-		case "state":
-			k[0] = statePrefix
+		defer db.writeCount.Add(1)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return tx.Set(k, v)
 		}
-		return tx.Set(k, v)
 	})
 	return err
 }
@@ -294,7 +313,7 @@ func (s *badgerDBStore[T]) GetAll(ctx context.Context, name, bucket string) (cha
 	go func() {
 		defer close(kvCh)
 		stream := db.db.NewStream()
-		stream.NumGo = 4 // TODO:
+		// stream.NumGo = 4 // TODO:
 		stream.ChooseKey = func(item *badger.Item) bool {
 			if bucket == "" {
 				return item.Key()[0] != cacheConfigPrefix
@@ -314,7 +333,7 @@ func (s *badgerDBStore[T]) GetAll(ctx context.Context, name, bucket string) (cha
 				return err
 			}
 			for _, kv := range kvs.GetKv() {
-				kvToChan(kv.GetKey()[1:], kv.GetKey(), kvCh)
+				kvToChan(ctx, kv.GetKey()[1:], kv.GetKey(), kvCh)
 			}
 			return nil
 		}
@@ -332,7 +351,7 @@ func (s *badgerDBStore[T]) GetPrefix(ctx context.Context, name, bucket string, p
 		return nil, fmt.Errorf("unknown cache name %s", name)
 	}
 
-	kvCh := make(chan *KV)
+	kvCh := make(chan *KV, 1000) //TODO:
 	go func() {
 		defer close(kvCh)
 		err := db.db.View(badgerGetPrefixFn(ctx, name, bucket, prefix, pattern, kvCh))
@@ -404,8 +423,9 @@ func (s *badgerDBStore[T]) Stats(ctx context.Context, name string) (*StoreStats,
 func (s *badgerDBStore[T]) openDB(ctx context.Context, name string) (*badger.DB, error) {
 	opts := badger.DefaultOptions(name).
 		WithLoggingLevel(badger.WARNING).
-		WithCompression(options.None).
-		WithBlockCacheSize(0)
+		WithCompression(options.None)
+		// .
+		// WithBlockCacheSize(0)
 
 	bdb, err := badger.Open(opts)
 	if err != nil {
@@ -420,12 +440,12 @@ func (s *badgerDBStore[T]) openDB(ctx context.Context, name string) (*badger.DB,
 				return
 			case <-ticker.C:
 			again:
-				log.Debugf("running GC for %s", name)
-				err := bdb.RunValueLogGC(0.7)
+				log.Infof("running GC for %s", name)
+				err = bdb.RunValueLogGC(0.7)
 				if err == nil {
 					goto again
 				}
-				log.Debugf("GC for %s ended with err: %v", name, err)
+				log.Infof("GC for %s ended with err: %v", name, err)
 			}
 		}
 	}()
@@ -458,7 +478,7 @@ func badgerGetAllFn(ctx context.Context, indexName, bucket string, kvCh chan *KV
 						continue // skip cache config
 					}
 					err := item.Value(func(v []byte) error {
-						kvToChan(key[1:], v, kvCh)
+						kvToChan(ctx, key[1:], v, kvCh)
 						return nil
 					})
 					if err != nil {
@@ -476,7 +496,7 @@ func badgerGetAllFn(ctx context.Context, indexName, bucket string, kvCh chan *KV
 				continue // skip cache config
 			}
 			err := item.Value(func(v []byte) error {
-				kvToChan(k[1:], v, kvCh)
+				kvToChan(ctx, k[1:], v, kvCh)
 				return nil
 			})
 			if err != nil {
@@ -510,7 +530,7 @@ func badgerGetPrefixFn(ctx context.Context, indexName, bucket string, prefix, pa
 				}
 
 				err := item.Value(func(v []byte) error {
-					kvToChan(k[1:], v, kvCh)
+					kvToChan(ctx, k[1:], v, kvCh)
 					return nil
 				})
 				if err != nil {
