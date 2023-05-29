@@ -138,7 +138,7 @@ func (ci *cacheInstance[T]) readFromTreesCh(ctx context.Context, cname string, s
 		trees = append(trees, ci.state)
 	}
 	go func() {
-		defer close(rsCh)
+		// defer close(rsCh)
 		for _, tr := range trees {
 			err := tr.Query(p,
 				func(path []string, _ *ctree.Leaf, val interface{}) error {
@@ -221,7 +221,7 @@ func (ci *cacheInstance[T]) readPrefixFromStoreCh(ctx context.Context, bucket st
 			return ctx.Err()
 		case v, ok := <-vCh:
 			if !ok {
-				fmt.Printf("read %d\n", count)
+				// fmt.Printf("read %d\n", count)
 				return nil
 			}
 			// path

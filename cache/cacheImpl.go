@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/iptecharch/cache/config"
-	"github.com/iptecharch/cache/store"
+	"github.com/iptecharch/store"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -197,6 +197,23 @@ func (c *cache[T]) WriteValue(ctx context.Context, name string, store Store, p [
 		return fmt.Errorf("cache %q does not exist", name)
 	}
 	return ci.writeValue(ctx, cname, store, p, v)
+}
+
+func (c *cache[T]) WriteBytesValue(ctx context.Context, name string, store Store, p []string, vb []byte) error {
+	var cname string
+	name, cname = splitCacheName(name)
+	switch store {
+	case StoreConfig:
+	case StoreState:
+		if cname != "" {
+			return fmt.Errorf("state store does not have candidates")
+		}
+	}
+	ci, ok := c.getCacheInstance(ctx, name)
+	if !ok {
+		return fmt.Errorf("cache %q does not exist", name)
+	}
+	return ci.writeBytesValue(ctx, cname, store, p, vb)
 }
 
 func (c *cache[T]) ReadValue(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error) {

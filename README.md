@@ -16,8 +16,8 @@ make build
 
 ```shell
 bin/cachectl list
-bin/cachectl create -n target1 --cached
-bin/cachectl create -n target2 --cached
+bin/cachectl create -n target1 # --cached
+bin/cachectl create -n target2 # --cached
 bin/cachectl list
 bin/cachectl create-candidate -n target1 --candidate cl1
 bin/cachectl create-candidate -n target2 --candidate cl1

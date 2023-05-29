@@ -122,20 +122,22 @@ func (s *Server[T]) List(ctx context.Context, req *cachepb.ListRequest) (*cachep
 func (s *Server[T]) Read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
 	ctx := stream.Context()
 	pr, _ := peer.FromContext(ctx)
-	id := xid.New()
-	// TODO: change to Debugf
-	log.Infof("%s: Read request from peer: %v: %v", id.String(), pr.Addr, req)
-	defer log.Infof("%s: Read request from peer %v done", id.String(), pr.Addr)
+	if log.GetLevel() >= log.DebugLevel {
+		id := xid.New()
+		log.Debugf("%s: Read request from peer: %v: %v", id.String(), pr.Addr, req)
+		defer log.Debugf("%s: Read request from peer %v done", id.String(), pr.Addr)
+	}
 	return s.read(req, stream)
 }
 
 func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 	ctx := stream.Context()
 	pr, _ := peer.FromContext(ctx)
-	id := xid.New()
-	// TODO: change to Debugf
-	log.Infof("%s: Modify stream from peer: %v", id.String(), pr.Addr)
-	defer log.Infof("%s: Modify stream from peer %v done", id.String(), pr.Addr)
+	if log.GetLevel() >= log.DebugLevel {
+		id := xid.New()
+		log.Debugf("%s: Modify stream from peer: %v", id.String(), pr.Addr)
+		defer log.Debugf("%s: Modify stream from peer %v done", id.String(), pr.Addr)
+	}
 	for {
 		req, err := stream.Recv()
 		if err != nil {
@@ -308,28 +310,20 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 }
 
 func (s *Server[T]) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest) error {
-	m := s.bfn()
-	err := proto.Unmarshal(req.GetValue().GetValue(), m)
-	if err != nil {
-		return err
-	}
 	var store cache.Store
 	switch req.GetStore() {
-	case cachepb.Store_CONFIG:
-		store = cache.StoreConfig
 	case cachepb.Store_STATE:
 		store = cache.StoreState
 	}
-
-	return s.cache.WriteValue(ctx, req.GetName(), store, req.GetPath(), m)
+	// write the bytes to the cache,
+	// this method will not unmarshal the bytes into T
+	return s.cache.WriteBytesValue(ctx, req.GetName(), store, req.GetPath(), req.GetValue().GetValue())
 }
 
 func (s *Server[T]) modifyDelete(ctx context.Context, req *cachepb.DeleteValueRequest) error {
 	// delete value from cache
 	var store cache.Store
 	switch req.GetStore() {
-	case cachepb.Store_CONFIG:
-		store = cache.StoreConfig
 	case cachepb.Store_STATE:
 		store = cache.StoreState
 	}

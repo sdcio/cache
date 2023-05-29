@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/iptecharch/cache/store"
 	"github.com/iptecharch/schema-server/datastore/ctree"
+	"github.com/iptecharch/store"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -80,7 +80,7 @@ func (ci *cacheInstance[T]) initFromStore(ctx context.Context, wg *sync.WaitGrou
 	if err != nil {
 		return err
 	}
-	mcfg, err := ci.store.GetCacheConfig(ctx, ci.cfg.Name)
+	mcfg, err := ci.store.GetMeta(ctx, ci.cfg.Name)
 	if err != nil {
 		return err
 	}
@@ -147,6 +147,50 @@ func (ci *cacheInstance[T]) writeValue(ctx context.Context, cname string, store 
 	}
 
 	err := cand.updates.Add(p, v)
+	if err != nil {
+		return err
+	}
+	// remove the added path from deletes in case it was deleted before
+	cand.m.Lock()
+	defer cand.m.Unlock()
+	delete(cand.deletes, strings.Join(p, ","))
+	return nil
+}
+
+func (ci *cacheInstance[T]) writeBytesValue(ctx context.Context, cname string, store Store, p []string, v []byte) error {
+	m := ci.bFn()
+	err := proto.Unmarshal(v, m)
+	if err != nil {
+		return err
+	}
+	if cname == "" {
+		var err error
+		bucketName := configBucketName
+		switch store {
+		case StoreConfig:
+			if ci.cfg.Cached || ci.cfg.Ephemeral {
+				err = ci.config.Add(p, m)
+			}
+		case StoreState:
+			bucketName = stateBucketName
+			if ci.cfg.Cached || ci.cfg.Ephemeral {
+				err = ci.state.Add(p, m)
+			}
+		}
+		if err != nil {
+			return err
+		}
+		return ci.store.WriteBytesValue(ctx, ci.cfg.Name, bucketName, []byte(strings.Join(p, ",")), v)
+	}
+	// write to candidate
+	ci.m.Lock()
+	defer ci.m.Unlock()
+	cand, ok := ci.candidates[cname]
+	if !ok {
+		return fmt.Errorf("no such candidate %q in cache %q", ci.cfg.Name, cname)
+	}
+
+	err = cand.updates.Add(p, m)
 	if err != nil {
 		return err
 	}
