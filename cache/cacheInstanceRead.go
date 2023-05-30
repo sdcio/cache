@@ -52,10 +52,21 @@ func (ci *cacheInstance[T]) readValueCh(ctx context.Context, cname string, store
 			}
 		}
 		if ci.cfg.Cached || ci.cfg.Ephemeral {
-			err := ci.readFromTreesCh(ctx, cname, store, p, cand, found, rsCh)
+			ch, err := ci.readFromTreesCh(ctx, cname, store, p, cand, found)
 			if err != nil {
 				log.Errorf("failed to read from trees: %v", err)
 				return
+			}
+			for {
+				select {
+				case v, ok := <-ch:
+					if !ok {
+						return
+					}
+					rsCh <- v
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 		if !ci.cfg.Cached {
@@ -77,56 +88,10 @@ func (ci *cacheInstance[T]) readValueCh(ctx context.Context, cname string, store
 	return rsCh, nil
 }
 
-// readFromTrees is called when a cacheInstance is cached, it reads path `p` from the cacheInstance trees.
-func (ci *cacheInstance[T]) readFromTrees(ctx context.Context, cname string, store Store, p []string,
-	cand *candidate[T], found map[string]struct{}) ([]*Entry[T], error) {
-	es := make([]*Entry[T], 0)
-	trees := make([]*ctree.Tree, 0, 2)
-	switch store {
-	case StoreConfig:
-		trees = append(trees, ci.config)
-	case StoreState:
-		trees = append(trees, ci.state)
-	default:
-		trees = append(trees, ci.config)
-		trees = append(trees, ci.state)
-	}
-	for _, tr := range trees {
-		err := tr.Query(p,
-			func(path []string, _ *ctree.Leaf, val interface{}) error {
-				if cname != "" {
-					// check if the path has been deleted
-					cand.m.RLock()
-					_, ok := cand.deletes[strings.Join(path, ",")]
-					cand.m.RUnlock()
-					if ok {
-						return nil
-					}
-					if _, ok := found[strings.Join(path, ",")]; ok {
-						// path read from candidate, exit
-						return nil
-					}
-				}
-				// append value from main cache
-				vt := val.(T)
-				e := &Entry[T]{
-					P: path,
-					V: vt,
-				}
-				es = append(es, e)
-				return nil
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return es, nil
-}
-
 // readFromTreesCh is the same as readFromTrees but it writes the results into a channel.
 func (ci *cacheInstance[T]) readFromTreesCh(ctx context.Context, cname string, store Store, p []string,
-	cand *candidate[T], found map[string]struct{}, rsCh chan *Entry[T]) error {
+	cand *candidate[T], found map[string]struct{}) (chan *Entry[T], error) {
+	rsCh := make(chan *Entry[T])
 	trees := make([]*ctree.Tree, 0, 2)
 	switch store {
 	case StoreConfig:
@@ -175,35 +140,7 @@ func (ci *cacheInstance[T]) readFromTreesCh(ctx context.Context, cname string, s
 		}
 	}()
 
-	return nil
-}
-
-func (ci *cacheInstance[T]) readPrefixFromStore(ctx context.Context, bucket string, prefix, pattern []byte) ([]*Entry[T], error) {
-	vCh, err := ci.store.GetPrefix(ctx, ci.cfg.Name, bucket, prefix, pattern)
-	if err != nil {
-		return nil, err
-	}
-	es := make([]*Entry[T], 0)
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case v, ok := <-vCh:
-			if !ok {
-				return es, nil
-			}
-			pv := ci.bFn()
-			err = proto.Unmarshal(v.V, pv)
-			if err != nil {
-				return nil, err
-			}
-			entry := &Entry[T]{
-				P: strings.Split(string(v.K), ","),
-				V: pv,
-			}
-			es = append(es, entry)
-		}
-	}
+	return rsCh, nil
 }
 
 func (ci *cacheInstance[T]) readPrefixFromStoreCh(ctx context.Context, bucket string, prefix, pattern []byte,
@@ -221,7 +158,7 @@ func (ci *cacheInstance[T]) readPrefixFromStoreCh(ctx context.Context, bucket st
 			return ctx.Err()
 		case v, ok := <-vCh:
 			if !ok {
-				fmt.Printf("read %d\n", count)
+				// fmt.Printf("read %d\n", count)
 				return nil
 			}
 			// path

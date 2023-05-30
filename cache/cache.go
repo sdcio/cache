@@ -39,6 +39,9 @@ type Cache[T proto.Message] interface {
 	// WriteValue writes a new value in a cache instance.
 	// the value can be written into 2 different stores, CONFIG or STATE
 	WriteValue(ctx context.Context, name string, store Store, p []string, v T) error
+	// WriteBytesValue writes a bytes value into the named cache without unmarshaling
+	// it into a proto.Message T first
+	WriteBytesValue(ctx context.Context, name string, store Store, p []string, vb []byte) error
 	// ReadValue reads a value from a cache instance.
 	ReadValue(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error)
 	// DeleteValue deletes a value from a cache instance.
