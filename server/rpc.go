@@ -77,7 +77,7 @@ func (s *Server[T]) Create(ctx context.Context, req *cachepb.CreateRequest) (*ca
 		return nil, status.Errorf(codes.InvalidArgument, "`/` is not allowed in a cache name")
 	}
 	if !req.GetCached() && req.GetEphemeral() {
-		return nil, status.Errorf(codes.InvalidArgument, "a cache cannot be ephemeral and not cached")
+		req.Cached = true
 	}
 	cfg := &cache.CacheInstanceConfig{
 		Name:      req.GetName(),

@@ -89,6 +89,8 @@ func init() {
 	benchCmd.Flags().BoolVarP(&doNotWrite, "no-write", "", false, "do not write, only read")
 	benchCmd.Flags().BoolVarP(&deleteFlag, "delete", "", false, "delete caches at the end")
 	benchCmd.Flags().BoolVarP(&periodic, "periodic", "", false, "run periodically")
+	benchCmd.Flags().BoolVarP(&ephemeral, "ephemeral", "", false, "create an ephemeral cache")
+	benchCmd.Flags().BoolVarP(&cached, "cached", "", false, "create a cached cache")
 }
 
 func createCacheClient(addr string) (*grpc.ClientConn, cachepb.CacheClient, error) {
@@ -119,8 +121,8 @@ func runCreate(ctx context.Context, cclient cachepb.CacheClient) {
 			now := time.Now()
 			_, err = cclient.Create(ctx, &cachepb.CreateRequest{
 				Name:      fmt.Sprintf("cache-instance-%d", i),
-				Ephemeral: false,
-				Cached:    false,
+				Ephemeral: ephemeral,
+				Cached:    cached,
 			})
 			if err != nil {
 				fmt.Println(err)
@@ -239,10 +241,10 @@ func runRead(ctx context.Context, cclient cachepb.CacheClient) {
 			defer wg.Done()
 			defer sem.Release(1)
 			now := time.Now()
-
+			cacheName := fmt.Sprintf("cache-instance-%d", i)
 			// read all
 			readStream, err := cclient.Read(ctx, &cachepb.ReadRequest{
-				Name: fmt.Sprintf("cache-instance-%d", i),
+				Name: cacheName,
 				Path: []string{
 					"A",
 				},
@@ -251,6 +253,7 @@ func runRead(ctx context.Context, cclient cachepb.CacheClient) {
 				log.Error("fail read:", err)
 				os.Exit(1)
 			}
+			var valuesRead = 0
 			for {
 				_, err := readStream.Recv()
 				if err != nil {
@@ -260,7 +263,9 @@ func runRead(ctx context.Context, cclient cachepb.CacheClient) {
 					log.Error("fail rcv", err)
 					break
 				}
+				valuesRead++
 			}
+			log.Printf("read %d values from %s", valuesRead, cacheName)
 			durs <- time.Since(now)
 		}(i)
 	}
