@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/iptecharch/schema-server/datastore/ctree"
+	"github.com/iptecharch/data-server/datastore/ctree"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )

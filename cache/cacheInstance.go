@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/iptecharch/schema-server/datastore/ctree"
+	"github.com/iptecharch/data-server/datastore/ctree"
 	"github.com/iptecharch/store"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
