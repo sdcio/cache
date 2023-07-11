@@ -1,14 +1,14 @@
 module github.com/iptecharch/cache
 
-go 1.19
+go 1.20
 
 require (
 	github.com/golang/protobuf v1.5.3
 	github.com/gorilla/mux v1.8.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/iptecharch/data-server v0.0.4
-	github.com/iptecharch/schema-server v0.0.3
+	github.com/iptecharch/data-server v0.0.5
+	github.com/iptecharch/schema-server v0.0.4 // indirect
 	github.com/iptecharch/store v0.0.1
 	github.com/prometheus/client_golang v1.16.0
 	github.com/rs/xid v1.5.0
@@ -22,6 +22,8 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/controller-runtime v0.15.0
 )
+
+require github.com/iptecharch/sdc-protos v0.0.1
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/iptecharch/cache/proto/cachepb"
-	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
+	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/semaphore"
@@ -169,8 +169,8 @@ func runWrite(ctx context.Context, cclient cachepb.CacheClient) {
 				os.Exit(1)
 			}
 			for j := int64(0); j < numPaths; j++ {
-				tv := &schemapb.TypedValue{
-					Value: &schemapb.TypedValue_StringVal{
+				tv := &sdcpb.TypedValue{
+					Value: &sdcpb.TypedValue_StringVal{
 						StringVal: fmt.Sprintf("ABCD%d", j),
 					},
 				}
