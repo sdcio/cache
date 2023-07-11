@@ -21,7 +21,7 @@ import (
 
 	"github.com/iptecharch/cache/client"
 	"github.com/iptecharch/cache/proto/cachepb"
-	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
+	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
@@ -99,10 +99,10 @@ func init() {
 	modifyCmd.Flags().StringArrayVarP(&deletePaths, "delete", "", []string{}, "paths to delete")
 }
 
-func toTypedValue(typ, val string) (*schemapb.TypedValue, error) {
+func toTypedValue(typ, val string) (*sdcpb.TypedValue, error) {
 	// TODO: switch over typ
-	return &schemapb.TypedValue{
-		Value: &schemapb.TypedValue_StringVal{
+	return &sdcpb.TypedValue{
+		Value: &sdcpb.TypedValue_StringVal{
 			StringVal: val,
 		},
 	}, nil

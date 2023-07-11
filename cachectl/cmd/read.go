@@ -22,7 +22,7 @@ import (
 
 	"github.com/iptecharch/cache/client"
 	"github.com/iptecharch/cache/proto/cachepb"
-	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
+	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
@@ -72,7 +72,7 @@ var readCmd = &cobra.Command{
 				}
 				fmt.Println(string(b))
 			case "flat":
-				tv := new(schemapb.TypedValue)
+				tv := new(sdcpb.TypedValue)
 				err = proto.Unmarshal(rs.GetValue().GetValue(), tv)
 				if err != nil {
 					return err
@@ -93,29 +93,29 @@ func init() {
 }
 
 // TODO: finish all types
-func tvSPrint(tv *schemapb.TypedValue) string {
+func tvSPrint(tv *sdcpb.TypedValue) string {
 	switch v := tv.Value.(type) {
-	case *schemapb.TypedValue_AnyVal:
-	case *schemapb.TypedValue_AsciiVal:
+	case *sdcpb.TypedValue_AnyVal:
+	case *sdcpb.TypedValue_AsciiVal:
 		return v.AsciiVal
-	case *schemapb.TypedValue_BoolVal:
+	case *sdcpb.TypedValue_BoolVal:
 		return fmt.Sprintf("%t", v.BoolVal)
-	case *schemapb.TypedValue_BytesVal:
+	case *sdcpb.TypedValue_BytesVal:
 		return fmt.Sprintf("%b", v.BytesVal)
-	case *schemapb.TypedValue_DecimalVal:
-	case *schemapb.TypedValue_DoubleVal:
-	case *schemapb.TypedValue_FloatVal:
-	case *schemapb.TypedValue_IntVal:
+	case *sdcpb.TypedValue_DecimalVal:
+	case *sdcpb.TypedValue_DoubleVal:
+	case *sdcpb.TypedValue_FloatVal:
+	case *sdcpb.TypedValue_IntVal:
 		return fmt.Sprintf("%d", v.IntVal)
-	case *schemapb.TypedValue_JsonIetfVal:
+	case *sdcpb.TypedValue_JsonIetfVal:
 		return string(v.JsonIetfVal)
-	case *schemapb.TypedValue_JsonVal:
+	case *sdcpb.TypedValue_JsonVal:
 		return string(v.JsonVal)
-	case *schemapb.TypedValue_LeaflistVal:
-	case *schemapb.TypedValue_ProtoBytes:
-	case *schemapb.TypedValue_StringVal:
+	case *sdcpb.TypedValue_LeaflistVal:
+	case *sdcpb.TypedValue_ProtoBytes:
+	case *sdcpb.TypedValue_StringVal:
 		return v.StringVal
-	case *schemapb.TypedValue_UintVal:
+	case *sdcpb.TypedValue_UintVal:
 		return fmt.Sprintf("%d", v.UintVal)
 	}
 	return ""

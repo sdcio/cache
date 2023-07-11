@@ -8,7 +8,7 @@ import (
 
 	"github.com/iptecharch/cache/config"
 	"github.com/iptecharch/cache/server"
-	schemapb "github.com/iptecharch/schema-server/protos/schema_server"
+	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -35,7 +35,7 @@ func main() {
 	if trace {
 		log.SetLevel(log.TraceLevel)
 	}
-	var s *server.Server[*schemapb.TypedValue]
+	var s *server.Server[*sdcpb.TypedValue]
 
 	// TO BE REMOVED
 	go func() {
@@ -56,7 +56,7 @@ START:
 
 	ctx := context.TODO() // TODO:
 
-	bfn := func() *schemapb.TypedValue { return &schemapb.TypedValue{} }
+	bfn := func() *sdcpb.TypedValue { return &sdcpb.TypedValue{} }
 
 	s, err = server.NewServer(ctx, cfg, bfn)
 	if err != nil {
