@@ -7,7 +7,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/iptecharch/data-server v0.0.3
+	github.com/iptecharch/data-server v0.0.4
 	github.com/iptecharch/schema-server v0.0.3
 	github.com/iptecharch/store v0.0.1
 	github.com/prometheus/client_golang v1.16.0

@@ -201,8 +201,8 @@ github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:
 github.com/imdario/mergo v0.3.15 h1:M8XP7IuFNsqUx6VPK2P9OSmsYsI/YFaGil0uD21V3dM=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
-github.com/iptecharch/data-server v0.0.3 h1:8Rd7l8lgeSvK3Wr+t8Ri+nydwTssd0r4yY2uAJIG2BA=
-github.com/iptecharch/data-server v0.0.3/go.mod h1:Pu6HpdZGZnt0kGLsll6YNAP/fmPDscrgLTayjegVLx0=
+github.com/iptecharch/data-server v0.0.4 h1:MXkTwtj7JgaesF6yLrWlknVKdToFDbfN01w9ibwDwk0=
+github.com/iptecharch/data-server v0.0.4/go.mod h1:x6bf0jG/lybvPkpXUJU+SojoBPQvr7CFLNzMp3g48eo=
 github.com/iptecharch/schema-server v0.0.3 h1:k8GfVoWmhr/ihNw4jyO0MPI5lU/uLczkaErsQO2qFyE=
 github.com/iptecharch/schema-server v0.0.3/go.mod h1:ydjs/cdELe15LRa4FjnJld9tHRcciEF2rveR0sVYHAc=
 github.com/iptecharch/store v0.0.1 h1:SENcifZAZBO/QdJ29iCyR6u2hLl8YnPh/YYseLHWPzE=
