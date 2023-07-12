@@ -202,7 +202,7 @@ func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, d
 }
 
 // Read value(s) from a cache instance
-func (c *Client) Read(ctx context.Context, name string, store cachepb.Store, paths [][]string, opts ...grpc.CallOption) chan *cachepb.Update {
+func (c *Client) Read(ctx context.Context, name string, store cachepb.Store, paths [][]string, period time.Duration, opts ...grpc.CallOption) chan *cachepb.Update {
 	updCh := make(chan *cachepb.Update)
 	go func() {
 		defer close(updCh)
@@ -213,12 +213,13 @@ func (c *Client) Read(ctx context.Context, name string, store cachepb.Store, pat
 			if err != nil {
 				return
 			}
-			stream, err := c.client.Read(ctx,
-				&cachepb.ReadRequest{
-					Name:  name,
-					Path:  p,
-					Store: store,
-				}, opts...)
+			req := &cachepb.ReadRequest{
+				Name:   name,
+				Path:   p,
+				Store:  store,
+				Period: uint64(period),
+			}
+			stream, err := c.client.Read(ctx, req, opts...)
 			if err != nil {
 				log.Errorf("failed to create read stream: %v", err)
 				return
