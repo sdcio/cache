@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/iptecharch/cache/client"
 	"github.com/iptecharch/cache/proto/cachepb"
@@ -30,6 +31,7 @@ import (
 
 var readPath []string
 var storeName string
+var period time.Duration
 var format string
 
 // readCmd represents the read command
@@ -61,7 +63,7 @@ var readCmd = &cobra.Command{
 		for _, p := range readPath {
 			paths = append(paths, strings.Split(p, ","))
 		}
-		for rs := range c.Read(cmd.Context(), cacheName, store, paths) {
+		for rs := range c.Read(cmd.Context(), cacheName, store, paths, period) {
 			switch format {
 			case "":
 				fmt.Println(prototext.Format(rs))
@@ -89,6 +91,7 @@ func init() {
 	readCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
 	readCmd.Flags().StringArrayVarP(&readPath, "path", "p", []string{}, "paths to read")
 	readCmd.Flags().StringVarP(&storeName, "store", "s", "config", "cache store to read from")
+	readCmd.Flags().DurationVarP(&period, "period", "", 0, "read paths periodically, 0 means read once")
 	readCmd.Flags().StringVarP(&format, "format", "", "", "print format, '', 'flat' or 'json'")
 }
 

@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/iptecharch/cache/config"
 	"google.golang.org/protobuf/proto"
@@ -44,6 +45,8 @@ type Cache[T proto.Message] interface {
 	WriteBytesValue(ctx context.Context, name string, store Store, p []string, vb []byte) error
 	// ReadValue reads a value from a cache instance.
 	ReadValue(ctx context.Context, name string, store Store, p []string) (chan *Entry[T], error)
+	// ReadValuePeriodic reads a value from a cache instance every period
+	ReadValuePeriodic(ctx context.Context, name string, store Store, p []string, period time.Duration) (chan *Entry[T], error)
 	// DeleteValue deletes a value from a cache instance.
 	DeleteValue(ctx context.Context, name string, store Store, p []string) error
 	// Diff returns the changes made to a candidate

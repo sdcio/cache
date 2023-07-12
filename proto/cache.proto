@@ -110,10 +110,10 @@ message WriteValueResponse{
 }
 //
 message ReadRequest{
-    // string                  txid  = 1;
     string                  name  = 2;
     repeated string         path  = 3;
     Store                   store = 4;
+    uint64                  period = 5; 
 }
 message ReadResponse{
     string              name  = 2;

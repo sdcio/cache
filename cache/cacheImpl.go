@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/iptecharch/cache/config"
 	"github.com/iptecharch/store"
@@ -226,6 +227,41 @@ func (c *cache[T]) ReadValue(ctx context.Context, name string, store Store, p []
 	}
 
 	return ci.readValueCh(ctx, cname, store, p)
+}
+
+func (c *cache[T]) ReadValuePeriodic(ctx context.Context, name string, store Store, p []string, period time.Duration) (chan *Entry[T], error) {
+	rsCh := make(chan *Entry[T])
+	ticker := time.NewTicker(period)
+
+	go func() {
+		defer ticker.Stop()
+		defer close(rsCh)
+		ch, err := c.ReadValue(ctx, name, store, p)
+		if err != nil {
+			log.Errorf("failed to read value: %v", err)
+			return
+		}
+		for e := range ch {
+			rsCh <- e
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				ch, err := c.ReadValue(ctx, name, store, p)
+				if err != nil {
+					log.Errorf("failed to read value: %v", err)
+					return
+				}
+				for e := range ch {
+					rsCh <- e
+				}
+			}
+		}
+	}()
+
+	return rsCh, nil
 }
 
 func (c *cache[T]) DeleteValue(ctx context.Context, name string, store Store, p []string) error {

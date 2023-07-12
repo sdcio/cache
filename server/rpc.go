@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/iptecharch/cache/cache"
 	"github.com/iptecharch/cache/proto/cachepb"
@@ -278,9 +279,19 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 	case cachepb.Store_STATE:
 		store = cache.StoreState
 	}
-	ch, err := s.cache.ReadValue(ctx, req.GetName(), store, req.GetPath())
-	if err != nil {
-		return err
+	var ch chan *cache.Entry[T]
+	var err error
+	switch req.GetPeriod() {
+	case 0:
+		ch, err = s.cache.ReadValue(ctx, req.GetName(), store, req.GetPath())
+		if err != nil {
+			return err
+		}
+	default:
+		ch, err = s.cache.ReadValuePeriodic(ctx, req.GetName(), store, req.GetPath(), time.Duration(req.GetPeriod()))
+		if err != nil {
+			return err
+		}
 	}
 	for {
 		select {
