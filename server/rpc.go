@@ -288,7 +288,11 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 			return err
 		}
 	default:
-		ch, err = s.cache.ReadValuePeriodic(ctx, req.GetName(), store, req.GetPath(), time.Duration(req.GetPeriod()))
+		period := time.Duration(req.GetPeriod())
+		if period < time.Second {
+			period = time.Second
+		}
+		ch, err = s.cache.ReadValuePeriodic(ctx, req.GetName(), store, req.GetPath(), period)
 		if err != nil {
 			return err
 		}
