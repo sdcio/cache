@@ -22,7 +22,6 @@ import (
 	"github.com/iptecharch/cache/client"
 	"github.com/iptecharch/cache/proto/cachepb"
 	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -66,8 +65,7 @@ var modifyCmd = &cobra.Command{
 		for _, upd := range updatePaths {
 			upd := strings.SplitN(upd, ":::", 3)
 			if len(upd) != 3 {
-				log.Errorf("path %q is malformed", upd)
-				continue
+				return fmt.Errorf("update %q is malformed", upd)
 			}
 			tv, err := toTypedValue(upd[1], upd[2])
 			if err != nil {
