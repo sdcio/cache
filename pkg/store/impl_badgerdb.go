@@ -96,6 +96,7 @@ func (s *badgerDBStore) ListCaches(ctx context.Context) ([]string, error) {
 
 func (s *badgerDBStore) DeleteCache(ctx context.Context, name string) error {
 	s.m.Lock()
+	defer s.m.Unlock()
 	db, ok := s.dbs[name]
 	if ok {
 		err := db.db.Close()
@@ -105,7 +106,7 @@ func (s *badgerDBStore) DeleteCache(ctx context.Context, name string) error {
 		db.cfn()
 	}
 	delete(s.dbs, name)
-	s.m.Unlock()
+
 	// delete file if it exists
 	dbDirName := s.dbDirName(name)
 	_, err := os.Stat(dbDirName)
@@ -321,7 +322,7 @@ func (s *badgerDBStore) DeletePrefix(ctx context.Context, name, bucket string, k
 			key := item.KeyCopy(nil)
 			for _, sfn := range fn {
 				if !sfn(key[1:]) {
-					goto OUTER
+					continue OUTER // NOT GOTO !!!!!
 				}
 			}
 			keysToDelete = append(keysToDelete, key)
@@ -646,6 +647,7 @@ func getPrefixes(bucket string, prefix []byte) [][]byte {
 func (db *bdb) deleteKeys(keys [][]byte) error {
 	return db.db.Update(func(txn *badger.Txn) error {
 		for _, key := range keys {
+			fmt.Printf("deleting key: %x\n", key)
 			if err := txn.Delete(key); err != nil {
 				return err
 			}

@@ -141,11 +141,14 @@ func (c *cache) Delete(ctx context.Context, name string) error {
 	if !ok {
 		return fmt.Errorf("cache %q does not exist", name)
 	}
+	log.Debugf("found cache instance %s", name)
 	// delete candidate
 	if cname != "" {
+		log.Debugf("deleting candidate %s from cache %s", cname, name)
 		return ci.deleteCandidate(ctx, cname)
 	}
 	// delete cache
+	log.Debugf("deleting cache %s", name)
 	err := ci.delete(ctx, name)
 	if err != nil {
 		return err
@@ -256,14 +259,12 @@ func (c *cache) ReadValuePeriodic(ctx context.Context, name string, ro *Opts, pe
 func (c *cache) WriteValue(ctx context.Context, name string, wo *Opts, v []byte) error {
 	var cname string
 	name, cname = splitCacheName(name)
-	switch wo.Store {
-	case StoreConfig:
-	case StoreState:
-		if cname != "" {
+	if cname != "" {
+		switch wo.Store {
+		case StoreConfig:
+		case StoreState:
 			return fmt.Errorf("state store does not have candidates")
-		}
-	case StoreIntended:
-		if cname != "" {
+		case StoreIntended:
 			return fmt.Errorf("intended store does not have candidates")
 		}
 	}
