@@ -16,10 +16,11 @@ make build
 
 ```shell
 bin/cachectl list
-bin/cachectl create -n target1 # --cached
-bin/cachectl create -n target2 # --cached
+bin/cachectl create -n target1
+bin/cachectl create -n target2
 bin/cachectl list
 bin/cachectl create-candidate -n target1 --candidate cl1
+bin/cachectl create-candidate -n target1 --candidate cl2 --owner me --priority 100
 bin/cachectl create-candidate -n target2 --candidate cl1
 bin/cachectl list
 bin/cachectl get -n target1
@@ -56,6 +57,29 @@ bin/cachectl delete -n target2
 bin/cachectl list
 ```
 
+## stores
+
+```shell
+bin/cachectl list
+bin/cachectl create -n target1
+bin/cachectl create -n target2
+bin/cachectl list
+# config
+bin/cachectl modify -n target1 --update a,b,c1:::string:::1 --update a,b,c2:::string:::2
+bin/cachectl modify -n target1 --update a,b,c3:::string:::3
+bin/cachectl modify -n target1 --update a,b,c4:::string:::4
+# state
+bin/cachectl modify -n target1 -s state --update a,b,c1:::string:::1 --update a,b,c2:::string:::2
+bin/cachectl modify -n target1 -s state --update a,b,c3:::string:::3
+bin/cachectl modify -n target1 -s state --update a,b,c4:::string:::4
+# intended
+bin/cachectl modify -n target1 -s intended --update a,b,c1:::string:::1 --update a,b,c2:::string:::2 --owner me --priority 100
+bin/cachectl modify -n target1 -s intended --update a,b,c3:::string:::3
+bin/cachectl modify -n target1 -s intended --update a,b,c4:::string:::4
+
+bin/cachectl read -n target1 -s intended -p a,b --owner me --priority 100
+```
+
 ## benchmark against the lab in labs/single
 
 ### resources
@@ -83,7 +107,7 @@ bin/cachectl bench -a clab-cache-cache1:50100 \
     --concurrency 16 \
     --num-cache 16 \
     --num-path 2500000
-    
+
 caches          : 16
 concurrency     : 16
 paths per cache : 2500000

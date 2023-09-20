@@ -16,13 +16,15 @@ limitations under the License.
 package cmd
 
 import (
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
 var cacheName string
-var ephemeral bool
-var cached bool
+
+// var ephemeral bool
+// var cached bool
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
@@ -38,7 +40,7 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		err = c.Create(cmd.Context(), cacheName, ephemeral, cached)
+		err = c.Create(cmd.Context(), cacheName)
 		if err != nil {
 			return err
 		}
@@ -49,6 +51,4 @@ var createCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(createCmd)
 	createCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
-	createCmd.Flags().BoolVarP(&ephemeral, "ephemeral", "", false, "create an ephemeral cache")
-	createCmd.Flags().BoolVarP(&cached, "cached", "", false, "create a cached cache")
 }

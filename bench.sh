@@ -43,7 +43,7 @@ write_read $cache2
 write_read $cache3
 
 ####
-numpaths=1000
+numpaths=10000
 bin/cachectl list | xargs -rn1 bin/cachectl delete -n
 bin/cachectl bench --create --num-path $numpaths
 

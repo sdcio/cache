@@ -18,9 +18,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/prototext"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
 // getChangesCmd represents the get-changes command

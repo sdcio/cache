@@ -19,16 +19,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/iptecharch/cache/client"
-	"github.com/iptecharch/cache/proto/cachepb"
 	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+
+	"github.com/iptecharch/cache/pkg/cache"
+	"github.com/iptecharch/cache/pkg/client"
+	"github.com/iptecharch/cache/proto/cachepb"
 )
 
 var updatePaths []string
 var deletePaths []string
+var owner string
+var priority int32
 
 // modifyCmd represents the modify command
 var modifyCmd = &cobra.Command{
@@ -36,12 +40,14 @@ var modifyCmd = &cobra.Command{
 	Short: "modify values in the cache",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		var store cachepb.Store
+		var store cache.Store
 		switch storeName {
 		case "config":
-			store = cachepb.Store_CONFIG
+			store = cache.StoreConfig
 		case "state":
-			store = cachepb.Store_STATE
+			store = cache.StoreState
+		case "intended":
+			store = cache.StoreIntended
 		default:
 			return fmt.Errorf("unknown store name: %s", storeName)
 		}
@@ -82,7 +88,13 @@ var modifyCmd = &cobra.Command{
 				},
 			})
 		}
-		err = c.Modify(cmd.Context(), cacheName, store, dels, upds)
+
+		wo := &client.ClientOpts{
+			Store:    store,
+			Owner:    owner,
+			Priority: priority,
+		}
+		err = c.Modify(cmd.Context(), cacheName, wo, dels, upds)
 		if err != nil {
 			return err
 		}
@@ -95,6 +107,9 @@ func init() {
 	modifyCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
 	modifyCmd.Flags().StringArrayVarP(&updatePaths, "update", "", []string{}, "path:::value to write")
 	modifyCmd.Flags().StringArrayVarP(&deletePaths, "delete", "", []string{}, "paths to delete")
+	modifyCmd.Flags().StringVarP(&storeName, "store", "s", "config", "cache store to modify")
+	modifyCmd.Flags().StringVarP(&owner, "owner", "", "", "value owner for an intended store")
+	modifyCmd.Flags().Int32VarP(&priority, "priority", "", 0, "owner priority for an intended store")
 }
 
 func toTypedValue(typ, val string) (*sdcpb.TypedValue, error) {

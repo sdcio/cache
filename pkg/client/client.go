@@ -7,11 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iptecharch/cache/proto/cachepb"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/iptecharch/cache/pkg/cache"
+	"github.com/iptecharch/cache/proto/cachepb"
 )
 
 const (
@@ -34,6 +36,12 @@ type ClientConfig struct {
 	// gRPC dial and unary RPCs timeout
 	// defaults to 5s
 	Timeout time.Duration
+}
+
+type ClientOpts struct {
+	Store    cache.Store
+	Owner    string
+	Priority int32
 }
 
 func New(ctx context.Context, ccfg *ClientConfig) (*Client, error) {
@@ -96,14 +104,12 @@ func (c *Client) Get(ctx context.Context, name string, opts ...grpc.CallOption) 
 }
 
 // Create a new cache instance
-func (c *Client) Create(ctx context.Context, name string, ephemeral, cached bool, opts ...grpc.CallOption) error {
+func (c *Client) Create(ctx context.Context, name string, opts ...grpc.CallOption) error {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	_, err := c.client.Create(ctx,
 		&cachepb.CreateRequest{
-			Name:      name,
-			Ephemeral: ephemeral,
-			Cached:    cached,
+			Name: name,
 		},
 		opts...)
 	return err
@@ -131,13 +137,15 @@ func (c *Client) Exists(ctx context.Context, name string, opts ...grpc.CallOptio
 }
 
 // Create a Candidate
-func (c *Client) CreateCandidate(ctx context.Context, name, candidate string, opts ...grpc.CallOption) error {
+func (c *Client) CreateCandidate(ctx context.Context, name, candidate, owner string, p int32, opts ...grpc.CallOption) error {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 	_, err := c.client.CreateCandidate(ctx,
 		&cachepb.CreateCandidateRequest{
 			Name:      name,
 			Candidate: candidate,
+			Owner:     owner,
+			Priority:  p,
 		},
 		opts...)
 	return err
@@ -157,19 +165,29 @@ func (c *Client) Clone(ctx context.Context, name, clone string, opts ...grpc.Cal
 }
 
 // modify a cache instance
-func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, dels [][]string, upds []*cachepb.Update, opts ...grpc.CallOption) error {
+func (c *Client) Modify(ctx context.Context, name string, wo *ClientOpts, dels [][]string, upds []*cachepb.Update, opts ...grpc.CallOption) error {
 	stream, err := c.client.Modify(ctx, opts...)
 	if err != nil {
 		return err
 	}
-
+	var pbStore cachepb.Store
+	switch wo.Store {
+	case cache.StoreConfig:
+		pbStore = cachepb.Store_CONFIG
+	case cache.StoreState:
+		pbStore = cachepb.Store_STATE
+	case cache.StoreIntended:
+		pbStore = cachepb.Store_INTENDED
+	}
 	for _, del := range dels {
 		err = stream.Send(&cachepb.ModifyRequest{
 			Request: &cachepb.ModifyRequest_Delete{
 				Delete: &cachepb.DeleteValueRequest{
-					Name:  name,
-					Path:  del,
-					Store: store,
+					Name:     name,
+					Path:     del,
+					Store:    pbStore,
+					Owner:    wo.Owner,
+					Priority: wo.Priority,
 				},
 			},
 		})
@@ -183,10 +201,12 @@ func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, d
 			&cachepb.ModifyRequest{
 				Request: &cachepb.ModifyRequest_Write{
 					Write: &cachepb.WriteValueRequest{
-						Name:  name,
-						Path:  upd.GetPath(),
-						Value: upd.GetValue(),
-						Store: store,
+						Name:     name,
+						Path:     upd.GetPath(),
+						Value:    upd.GetValue(),
+						Store:    pbStore,
+						Owner:    wo.Owner,
+						Priority: wo.Priority,
 					},
 				},
 			})
@@ -194,6 +214,7 @@ func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, d
 			return err
 		}
 	}
+
 	_, err = stream.CloseAndRecv()
 	if strings.Contains(err.Error(), "EOF") {
 		return nil
@@ -202,45 +223,52 @@ func (c *Client) Modify(ctx context.Context, name string, store cachepb.Store, d
 }
 
 // Read value(s) from a cache instance
-func (c *Client) Read(ctx context.Context, name string, store cachepb.Store, paths [][]string, period time.Duration, opts ...grpc.CallOption) chan *cachepb.Update {
-	updCh := make(chan *cachepb.Update)
+func (c *Client) Read(ctx context.Context, name string, ro *ClientOpts, paths [][]string, period time.Duration, opts ...grpc.CallOption) chan *cachepb.ReadResponse {
+	updCh := make(chan *cachepb.ReadResponse)
 	go func() {
 		defer close(updCh)
 		wg := new(sync.WaitGroup)
 		sem := semaphore.NewWeighted(c.cfg.MaxReadStream)
+		var cStore cachepb.Store
+		switch ro.Store {
+		case cache.StoreConfig:
+			cStore = cachepb.Store_CONFIG
+		case cache.StoreState:
+			cStore = cachepb.Store_STATE
+		case cache.StoreIntended:
+			cStore = cachepb.Store_INTENDED
+		}
 		for _, p := range paths {
-			err := sem.Acquire(ctx, 1)
-			if err != nil {
-				return
-			}
-			req := &cachepb.ReadRequest{
-				Name:   name,
-				Path:   p,
-				Store:  store,
-				Period: uint64(period),
-			}
-			stream, err := c.client.Read(ctx, req, opts...)
-			if err != nil {
-				log.Errorf("failed to create read stream: %v", err)
-				return
-				// return nil, err
-			}
 			wg.Add(1)
-			go func() {
+			go func(p []string) {
 				defer wg.Done()
+				err := sem.Acquire(ctx, 1)
+				if err != nil {
+					return
+				}
 				defer sem.Release(1)
+				req := &cachepb.ReadRequest{
+					Name:     name,
+					Path:     p,
+					Store:    cStore,
+					Period:   uint64(period),
+					Owner:    ro.Owner,
+					Priority: ro.Priority,
+				}
+				stream, err := c.client.Read(ctx, req, opts...)
+				if err != nil {
+					log.Errorf("failed to create read stream: %v", err)
+					return
+				}
 				for {
 					rsp, err := stream.Recv()
 					if err != nil {
 						return
 						// return nil, err
 					}
-					updCh <- &cachepb.Update{
-						Path:  rsp.GetPath(),
-						Value: rsp.GetValue(),
-					}
+					updCh <- rsp
 				}
-			}()
+			}(p)
 		}
 		wg.Wait()
 	}()

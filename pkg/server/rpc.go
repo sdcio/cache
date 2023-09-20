@@ -6,38 +6,46 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iptecharch/cache/cache"
-	"github.com/iptecharch/cache/proto/cachepb"
 	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+
+	"github.com/iptecharch/cache/pkg/cache"
+	"github.com/iptecharch/cache/proto/cachepb"
 )
 
-func (s *Server[T]) Get(ctx context.Context, req *cachepb.GetRequest) (*cachepb.GetResponse, error) {
+func (s *Server) Get(ctx context.Context, req *cachepb.GetRequest) (*cachepb.GetResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
-	cfg, err := s.cache.GetDetails(ctx, req.GetName())
+	// cfg, err := s.cache.GetDetails(ctx, req.GetName())
+	// if err != nil {
+	// 	return nil, status.Errorf(codes.Internal, "%v", err)
+	// }
+	cands, err := s.cache.Candidates(ctx, req.GetName())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "%v", err)
+		return nil, status.Errorf(codes.Internal, "could not retrieve candidates list: %v", err)
 	}
-	rs, err := s.cache.Candidates(ctx, req.GetName())
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "%v", err)
+	rsp := &cachepb.GetResponse{
+		Name: req.GetName(),
+		// Ephemeral: cfg.Ephemeral,
+		// Cached:    cfg.Cached,
+		Candidate: make([]*cachepb.Candidate, 0, len(cands)),
 	}
-	return &cachepb.GetResponse{
-		Name:      req.GetName(),
-		Ephemeral: cfg.Ephemeral,
-		Cached:    cfg.Cached,
-		Candidate: rs,
-	}, nil
+	for _, cd := range cands {
+		rsp.Candidate = append(rsp.Candidate, &cachepb.Candidate{
+			Name:     cd.CandidateName,
+			Owner:    cd.Owner,
+			Priority: cd.Priority,
+		})
+	}
+	return rsp, nil
 }
 
-func (s *Server[T]) Clone(ctx context.Context, req *cachepb.CloneRequest) (*cachepb.CloneResponse, error) {
+func (s *Server) Clone(ctx context.Context, req *cachepb.CloneRequest) (*cachepb.CloneResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
@@ -53,14 +61,14 @@ func (s *Server[T]) Clone(ctx context.Context, req *cachepb.CloneRequest) (*cach
 	}, nil
 }
 
-func (s *Server[T]) CreateCandidate(ctx context.Context, req *cachepb.CreateCandidateRequest) (*cachepb.CreateCandidateResponse, error) {
+func (s *Server) CreateCandidate(ctx context.Context, req *cachepb.CreateCandidateRequest) (*cachepb.CreateCandidateResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
 	if req.GetCandidate() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "candidate cannot be empty")
 	}
-	n, err := s.cache.CreateCandidate(ctx, req.GetName(), req.GetCandidate())
+	n, err := s.cache.CreateCandidate(ctx, req.GetName(), req.GetCandidate(), req.GetOwner(), req.GetPriority())
 	if err != nil {
 		return nil, err
 	}
@@ -70,29 +78,29 @@ func (s *Server[T]) CreateCandidate(ctx context.Context, req *cachepb.CreateCand
 	}, nil
 }
 
-func (s *Server[T]) Create(ctx context.Context, req *cachepb.CreateRequest) (*cachepb.CreateResponse, error) {
+func (s *Server) Create(ctx context.Context, req *cachepb.CreateRequest) (*cachepb.CreateResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
 	if strings.Contains(req.GetName(), "/") {
 		return nil, status.Errorf(codes.InvalidArgument, "`/` is not allowed in a cache name")
 	}
-	if !req.GetCached() && req.GetEphemeral() {
-		req.Cached = true
-	}
+	// if !req.GetCached() && req.GetEphemeral() {
+	// 	req.Cached = true
+	// }
 	cfg := &cache.CacheInstanceConfig{
 		Name:      req.GetName(),
 		StoreType: s.cfg.Cache.StoreType,
-		Ephemeral: req.GetEphemeral(),
-		Cached:    req.GetCached(),
-		Dir:       s.cfg.Cache.Dir,
+		// Ephemeral: req.GetEphemeral(),
+		// Cached:    req.GetCached(),
+		Dir: s.cfg.Cache.Dir,
 	}
 	log.Debugf("creating a cache with config %+v", cfg)
 	err := s.cache.Create(ctx, cfg)
 	return &cachepb.CreateResponse{}, err
 }
 
-func (s *Server[T]) Delete(ctx context.Context, req *cachepb.DeleteRequest) (*cachepb.DeleteResponse, error) {
+func (s *Server) Delete(ctx context.Context, req *cachepb.DeleteRequest) (*cachepb.DeleteResponse, error) {
 	log.Debugf("received delete request %v", req)
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
@@ -104,7 +112,7 @@ func (s *Server[T]) Delete(ctx context.Context, req *cachepb.DeleteRequest) (*ca
 	return &cachepb.DeleteResponse{}, nil
 }
 
-func (s *Server[T]) Exists(ctx context.Context, req *cachepb.ExistsRequest) (*cachepb.ExistsResponse, error) {
+func (s *Server) Exists(ctx context.Context, req *cachepb.ExistsRequest) (*cachepb.ExistsResponse, error) {
 	log.Debugf("received exists request %v", req)
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
@@ -114,13 +122,13 @@ func (s *Server[T]) Exists(ctx context.Context, req *cachepb.ExistsRequest) (*ca
 	}, nil
 }
 
-func (s *Server[T]) List(ctx context.Context, req *cachepb.ListRequest) (*cachepb.ListResponse, error) {
+func (s *Server) List(ctx context.Context, req *cachepb.ListRequest) (*cachepb.ListResponse, error) {
 	return &cachepb.ListResponse{
 		Cache: s.cache.List(ctx),
 	}, nil
 }
 
-func (s *Server[T]) Read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
+func (s *Server) Read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
 	ctx := stream.Context()
 	pr, _ := peer.FromContext(ctx)
 	if log.GetLevel() >= log.DebugLevel {
@@ -131,7 +139,7 @@ func (s *Server[T]) Read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 	return s.read(req, stream)
 }
 
-func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
+func (s *Server) Modify(stream cachepb.Cache_ModifyServer) error {
 	ctx := stream.Context()
 	pr, _ := peer.FromContext(ctx)
 	if log.GetLevel() >= log.DebugLevel {
@@ -143,6 +151,9 @@ func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 		req, err := stream.Recv()
 		if err != nil {
 			if strings.Contains(err.Error(), "EOF") {
+				return nil
+			}
+			if strings.Contains(err.Error(), "context canceled") {
 				return nil
 			}
 			log.Errorf("peer=%s, Modify Stream ended with err: %v", pr.Addr.String(), err)
@@ -162,7 +173,7 @@ func (s *Server[T]) Modify(stream cachepb.Cache_ModifyServer) error {
 	}
 }
 
-func (s *Server[T]) validateModifyRequest(req *cachepb.ModifyRequest) error {
+func (s *Server) validateModifyRequest(req *cachepb.ModifyRequest) error {
 	if req == nil {
 		return errors.New("nil modify request")
 	}
@@ -190,7 +201,7 @@ func (s *Server[T]) validateModifyRequest(req *cachepb.ModifyRequest) error {
 	return nil
 }
 
-func (s *Server[T]) GetChanges(req *cachepb.GetChangesRequest, stream cachepb.Cache_GetChangesServer) error {
+func (s *Server) GetChanges(req *cachepb.GetChangesRequest, stream cachepb.Cache_GetChangesServer) error {
 	if req.GetName() == "" {
 		return status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
@@ -215,17 +226,17 @@ func (s *Server[T]) GetChanges(req *cachepb.GetChangesRequest, stream cachepb.Ca
 	}
 	// send updates
 	for _, upd := range updates {
-		b, err := proto.Marshal(upd.V)
-		if err != nil {
-			return err
-		}
+		// b, err := proto.Marshal(upd.V)
+		// if err != nil {
+		// 	return err
+		// }
 		err = stream.Send(&cachepb.GetChangesResponse{
 			Name:      req.GetName(),
 			Candidate: req.GetCandidate(),
 			Update: &cachepb.Update{
 				Path: upd.P,
 				Value: &anypb.Any{
-					Value: b,
+					Value: upd.V,
 				},
 			},
 		})
@@ -237,7 +248,7 @@ func (s *Server[T]) GetChanges(req *cachepb.GetChangesRequest, stream cachepb.Ca
 	return nil
 }
 
-func (s *Server[T]) Discard(ctx context.Context, req *cachepb.DiscardRequest) (*cachepb.DiscardResponse, error) {
+func (s *Server) Discard(ctx context.Context, req *cachepb.DiscardRequest) (*cachepb.DiscardResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
@@ -251,7 +262,7 @@ func (s *Server[T]) Discard(ctx context.Context, req *cachepb.DiscardRequest) (*
 	return &cachepb.DiscardResponse{}, nil
 }
 
-func (s *Server[T]) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cachepb.StatsResponse, error) {
+func (s *Server) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cachepb.StatsResponse, error) {
 	ss, err := s.cache.Stats(ctx, req.GetName(), req.GetKeysCount())
 	if err != nil {
 		return nil, err
@@ -270,7 +281,7 @@ func (s *Server[T]) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cach
 }
 
 // helpers
-func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
+func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
 	ctx := stream.Context()
 	var store cache.Store
 	switch req.GetStore() {
@@ -278,12 +289,19 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 		store = cache.StoreConfig
 	case cachepb.Store_STATE:
 		store = cache.StoreState
+	case cachepb.Store_INTENDED:
+		store = cache.StoreIntended
 	}
-	var ch chan *cache.Entry[T]
+	var ch chan *cache.Entry
 	var err error
 	switch req.GetPeriod() {
 	case 0:
-		ch, err = s.cache.ReadValue(ctx, req.GetName(), store, req.GetPath())
+		ch, err = s.cache.ReadValue(ctx, req.GetName(), &cache.Opts{
+			Store:    store,
+			Path:     req.GetPath(),
+			Owner:    req.GetOwner(),
+			Priority: req.GetPriority(),
+		})
 		if err != nil {
 			return err
 		}
@@ -292,7 +310,12 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 		if period < time.Second {
 			period = time.Second
 		}
-		ch, err = s.cache.ReadValuePeriodic(ctx, req.GetName(), store, req.GetPath(), period)
+		ch, err = s.cache.ReadValuePeriodic(ctx, req.GetName(), &cache.Opts{
+			Store:    store,
+			Path:     req.GetPath(),
+			Owner:    req.GetOwner(),
+			Priority: req.GetPriority(),
+		}, period)
 		if err != nil {
 			return err
 		}
@@ -305,16 +328,13 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 			if !ok {
 				return nil
 			}
-			b, err := proto.Marshal(e.V)
-			if err != nil {
-				return err
-			}
 			rsp := &cachepb.ReadResponse{
-				Name: req.GetName(),
-				Path: e.P,
-				Value: &anypb.Any{
-					Value: b,
-				},
+				Name:     req.GetName(),
+				Path:     e.P,
+				Value:    &anypb.Any{Value: e.V},
+				Store:    req.Store,
+				Owner:    e.Owner,
+				Priority: e.Priority,
 			}
 			err = stream.Send(rsp)
 			if err != nil {
@@ -324,24 +344,39 @@ func (s *Server[T]) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServ
 	}
 }
 
-func (s *Server[T]) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest) error {
+func (s *Server) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest) error {
 	var store cache.Store
 	switch req.GetStore() {
 	case cachepb.Store_STATE:
 		store = cache.StoreState
+	case cachepb.Store_INTENDED:
+		store = cache.StoreIntended
 	}
 	// write the bytes to the cache,
 	// this method will not unmarshal the bytes into T
-	return s.cache.WriteBytesValue(ctx, req.GetName(), store, req.GetPath(), req.GetValue().GetValue())
+	return s.cache.WriteValue(ctx, req.GetName(), &cache.Opts{
+		Owner:    req.GetOwner(),
+		Priority: req.GetPriority(),
+		Store:    store,
+		Path:     req.GetPath(),
+	}, req.GetValue().GetValue(),
+	)
 }
 
-func (s *Server[T]) modifyDelete(ctx context.Context, req *cachepb.DeleteValueRequest) error {
+func (s *Server) modifyDelete(ctx context.Context, req *cachepb.DeleteValueRequest) error {
 	// delete value from cache
 	var store cache.Store
 	switch req.GetStore() {
 	case cachepb.Store_STATE:
 		store = cache.StoreState
+	case cachepb.Store_INTENDED:
+		store = cache.StoreIntended
 	}
 
-	return s.cache.DeleteValue(ctx, req.GetName(), store, req.GetPath())
+	return s.cache.DeleteValue(ctx, req.GetName(), &cache.Opts{
+		Store:    store,
+		Path:     req.GetPath(),
+		Owner:    req.GetOwner(),
+		Priority: req.GetPriority(),
+	})
 }
