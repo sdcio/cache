@@ -24,7 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iptecharch/cache/proto/cachepb"
 	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -33,6 +32,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+
+	"github.com/iptecharch/cache/proto/cachepb"
 )
 
 var conc int64
@@ -56,7 +57,7 @@ var benchCmd = &cobra.Command{
 		}
 		defer cc.Close()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(cmd.Context())
 		defer cancel()
 
 		fmt.Println("caches          :", numCache)
@@ -66,7 +67,7 @@ var benchCmd = &cobra.Command{
 		runAll(ctx, cclient, true)
 
 		if periodic {
-			ticker := time.NewTicker(15 * time.Minute)
+			ticker := time.NewTicker(1 * time.Minute)
 			defer ticker.Stop()
 			for {
 				select {
@@ -89,8 +90,6 @@ func init() {
 	benchCmd.Flags().BoolVarP(&doNotWrite, "no-write", "", false, "do not write, only read")
 	benchCmd.Flags().BoolVarP(&deleteFlag, "delete", "", false, "delete caches at the end")
 	benchCmd.Flags().BoolVarP(&periodic, "periodic", "", false, "run periodically")
-	benchCmd.Flags().BoolVarP(&ephemeral, "ephemeral", "", false, "create an ephemeral cache")
-	benchCmd.Flags().BoolVarP(&cached, "cached", "", false, "create a cached cache")
 }
 
 func createCacheClient(addr string) (*grpc.ClientConn, cachepb.CacheClient, error) {
@@ -120,9 +119,7 @@ func runCreate(ctx context.Context, cclient cachepb.CacheClient) {
 			defer sem.Release(1)
 			now := time.Now()
 			_, err = cclient.Create(ctx, &cachepb.CreateRequest{
-				Name:      fmt.Sprintf("cache-instance-%d", i),
-				Ephemeral: ephemeral,
-				Cached:    cached,
+				Name: fmt.Sprintf("cache-instance-%d", i),
 			})
 			if err != nil {
 				fmt.Println(err)
@@ -296,18 +293,48 @@ func runDelete(ctx context.Context, cclient cachepb.CacheClient) {
 		if err != nil {
 			panic(err)
 		}
+		// delete each path
 		go func(i int64) {
 			defer wg2.Done()
 			defer sem2.Release(1)
 			now := time.Now()
-			_, err = cclient.Delete(ctx, &cachepb.DeleteRequest{
-				Name: fmt.Sprintf("cache-instance-%d", i),
-			})
+			modStream, err := cclient.Modify(ctx)
 			if err != nil {
-				fmt.Println(err)
+				fmt.Println("fail stream", err)
 				os.Exit(1)
 			}
+			cacheName := fmt.Sprintf("cache-instance-%d", i)
+			for j := int64(0); j < numPaths; j++ {
+				err = modStream.Send(&cachepb.ModifyRequest{
+					Request: &cachepb.ModifyRequest_Delete{
+						Delete: &cachepb.DeleteValueRequest{
+							Name: cacheName,
+							Path: []string{
+								"A",
+								fmt.Sprintf("abcd%d", i),
+								fmt.Sprintf("abcd%d", (i+1)*j),
+								fmt.Sprintf("abcd%d", (i+2)*j),
+								fmt.Sprintf("abcd%d", (i+3)*j),
+							},
+						},
+					},
+				})
+				if err != nil {
+					log.Errorf("fail send: %v", err)
+					os.Exit(1)
+				}
+			}
+			modStream.CloseSend()
+			log.Printf("deleted %d paths from %s", numPaths, cacheName)
 			durs2 <- time.Since(now)
+			// cacheName = fmt.Sprintf("cache-instance-%d", i)
+			// _, err = cclient.Delete(ctx, &cachepb.DeleteRequest{
+			// 	Name: cacheName,
+			// })
+			// if err != nil {
+			// 	fmt.Println(err)
+			// 	os.Exit(1)
+			// }
 		}(i)
 	}
 	wg2.Wait()

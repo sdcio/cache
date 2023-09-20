@@ -9,27 +9,26 @@ import (
 	"github.com/gorilla/mux"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/iptecharch/cache/cache"
-	"github.com/iptecharch/cache/config"
-	"github.com/iptecharch/cache/proto/cachepb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/proto"
+
+	"github.com/iptecharch/cache/pkg/cache"
+	"github.com/iptecharch/cache/pkg/config"
+	"github.com/iptecharch/cache/proto/cachepb"
 )
 
 const (
 	writeTimeout = 30 * time.Second
 )
 
-type Server[T proto.Message] struct {
+type Server struct {
 	cfg *config.Config
 
-	cache cache.Cache[T]
-	bfn   func() T
+	cache cache.Cache
 	srv   *grpc.Server
 	cachepb.UnimplementedCacheServer
 	//
@@ -40,10 +39,9 @@ type Server[T proto.Message] struct {
 	modifyCh chan *cachepb.ModifyRequest
 }
 
-func NewServer[T proto.Message](ctx context.Context, cfg *config.Config, fn func() T) (*Server[T], error) {
-	s := &Server[T]{
+func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
+	s := &Server{
 		cfg:      cfg,
-		bfn:      fn,
 		router:   mux.NewRouter(),
 		reg:      prometheus.NewRegistry(),
 		modifyCh: make(chan *cachepb.ModifyRequest, cfg.GRPCServer.BufferSize),
@@ -84,8 +82,8 @@ func NewServer[T proto.Message](ctx context.Context, cfg *config.Config, fn func
 	return s, nil
 }
 
-func (s *Server[T]) Start(ctx context.Context) error {
-	s.cache = cache.New(s.cfg.Cache, s.bfn)
+func (s *Server) Start(ctx context.Context) error {
+	s.cache = cache.New(s.cfg.Cache)
 	if s.cfg.Cache.StoreType != "" {
 		err := s.cache.Init(ctx)
 		if err != nil {
@@ -108,7 +106,7 @@ func (s *Server[T]) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server[T]) ServeHTTP() {
+func (s *Server) ServeHTTP() {
 	s.router.Handle("/metrics", promhttp.HandlerFor(s.reg, promhttp.HandlerOpts{}))
 	s.reg.MustRegister(collectors.NewGoCollector())
 	s.reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -125,7 +123,7 @@ func (s *Server[T]) ServeHTTP() {
 	}
 }
 
-func (s *Server[T]) Stop() {
+func (s *Server) Stop() {
 	s.srv.Stop()
 	if s.httpSrv != nil {
 		s.httpSrv.Shutdown(context.TODO())
@@ -133,14 +131,14 @@ func (s *Server[T]) Stop() {
 	s.cache.Close()
 }
 
-func (s *Server[T]) startWriteWorkers(ctx context.Context) {
+func (s *Server) startWriteWorkers(ctx context.Context) {
 	for i := 0; i < s.cfg.GRPCServer.WriteWorkers; i++ {
 		go s.writeWorker(ctx)
 	}
 	<-ctx.Done()
 }
 
-func (s *Server[T]) writeWorker(ctx context.Context) {
+func (s *Server) writeWorker(ctx context.Context) {
 	var err error
 	for {
 		select {

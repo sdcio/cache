@@ -21,12 +21,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iptecharch/cache/client"
-	"github.com/iptecharch/cache/proto/cachepb"
 	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/iptecharch/cache/pkg/cache"
+	"github.com/iptecharch/cache/pkg/client"
+	"github.com/iptecharch/cache/proto/cachepb"
 )
 
 var readPath []string
@@ -40,12 +42,14 @@ var readCmd = &cobra.Command{
 	Short: "read value from a cache instance",
 
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		var store cachepb.Store
+		var store cache.Store
 		switch storeName {
 		case "config":
-			store = cachepb.Store_CONFIG
+			store = cache.StoreConfig
 		case "state":
-			store = cachepb.Store_STATE
+			store = cache.StoreState
+		case "intended":
+			store = cache.StoreIntended
 		default:
 			return fmt.Errorf("unknown store name: %s", storeName)
 		}
@@ -63,7 +67,12 @@ var readCmd = &cobra.Command{
 		for _, p := range readPath {
 			paths = append(paths, strings.Split(p, ","))
 		}
-		for rs := range c.Read(cmd.Context(), cacheName, store, paths, period) {
+		for rs := range c.Read(cmd.Context(), cacheName,
+			&client.ClientOpts{
+				Store:    store,
+				Owner:    owner,
+				Priority: priority,
+			}, paths, period) {
 			switch format {
 			case "":
 				fmt.Println(prototext.Format(rs))
@@ -79,7 +88,14 @@ var readCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
-				fmt.Printf("%s: %s\n", strings.Join(rs.GetPath(), "/"), tvSPrint(tv))
+				switch rs.GetStore() {
+				case cachepb.Store_CONFIG:
+					fmt.Printf("config: %s: %s\n", strings.Join(rs.GetPath(), "/"), tvSPrint(tv))
+				case cachepb.Store_STATE:
+					fmt.Printf("state: %s: %s\n", strings.Join(rs.GetPath(), "/"), tvSPrint(tv))
+				case cachepb.Store_INTENDED:
+					fmt.Printf("intended: %s: %d: %s: %s\n", rs.GetOwner(), rs.GetPriority(), strings.Join(rs.GetPath(), "/"), tvSPrint(tv))
+				}
 			}
 		}
 		return nil
@@ -93,6 +109,8 @@ func init() {
 	readCmd.Flags().StringVarP(&storeName, "store", "s", "config", "cache store to read from")
 	readCmd.Flags().DurationVarP(&period, "period", "", 0, "read paths periodically, 0 means read once")
 	readCmd.Flags().StringVarP(&format, "format", "", "", "print format, '', 'flat' or 'json'")
+	readCmd.Flags().StringVarP(&owner, "owner", "", "", "value owner for an intended store")
+	readCmd.Flags().Int32VarP(&priority, "priority", "", 0, "owner priority for an intended store")
 }
 
 // TODO: finish all types

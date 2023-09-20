@@ -16,13 +16,16 @@ limitations under the License.
 package cmd
 
 import (
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
+var candidateOwner string
 var candidateName string
+var candidatePriority int32
 
-// cloneCmd represents the clone command
+// createCandidateCmd represents the create-candidate command
 var createCandidateCmd = &cobra.Command{
 	Use:   "create-candidate",
 	Short: "create a candidate from a cache instance",
@@ -36,7 +39,12 @@ var createCandidateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		err = c.CreateCandidate(cmd.Context(), cacheName, candidateName)
+		err = c.CreateCandidate(cmd.Context(),
+			cacheName,
+			candidateName,
+			candidateOwner,
+			candidatePriority,
+		)
 		if err != nil {
 			return err
 		}
@@ -48,4 +56,6 @@ func init() {
 	rootCmd.AddCommand(createCandidateCmd)
 	createCandidateCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
 	createCandidateCmd.Flags().StringVarP(&candidateName, "candidate", "", "", "cache candidate name")
+	createCandidateCmd.Flags().StringVarP(&candidateOwner, "owner", "", "", "cache candidate owner")
+	createCandidateCmd.Flags().Int32VarP(&candidatePriority, "priority", "", 0, "cache candidate priority")
 }

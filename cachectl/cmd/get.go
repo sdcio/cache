@@ -18,12 +18,13 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/prototext"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
-// cloneCmd represents the clone command
+// getCmd represents the get command
 var getCmd = &cobra.Command{
 	Use:   "get",
 	Short: "get a cache instance details",

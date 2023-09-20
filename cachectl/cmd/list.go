@@ -19,8 +19,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
 // listCmd represents the list command

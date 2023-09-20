@@ -37,10 +37,10 @@ message GetRequest{
     string name = 1;
 }
 message GetResponse{
-    string          name      = 1;
-    bool            ephemeral = 2;
-    bool            cached    = 3;
-    repeated string candidate = 4;
+    string              name      = 1;
+    // bool                ephemeral = 2;
+    // bool                cached    = 3;
+    repeated Candidate  candidate = 4;
 }
 //
 message ListRequest{}
@@ -50,8 +50,8 @@ message ListResponse{
 //
 message CreateRequest{
     string name    = 1;
-    bool ephemeral = 2;
-    bool cached    = 3;
+    // bool ephemeral = 2;
+    // bool cached    = 3;
 }
 message CreateResponse{}
 //
@@ -77,6 +77,8 @@ message CloneResponse{
 message CreateCandidateRequest{
     string name      = 1;
     string candidate = 2;
+    string owner     = 3;
+    int32  priority  = 4;
 }
 message CreateCandidateResponse{
     string name      = 1;
@@ -97,10 +99,12 @@ message ModifyResponse{
 }
 //
 message WriteValueRequest{
-    string              name  = 1;
-    repeated string     path  = 2;
-    google.protobuf.Any value = 3;
-    Store               store = 4;
+    string              name     = 1;
+    repeated string     path     = 2;
+    google.protobuf.Any value    = 3;
+    Store               store    = 4;
+    string              owner    = 5;
+    int32               priority = 6;
 }
 message WriteValueResponse{
     string          name  = 1;
@@ -110,22 +114,28 @@ message WriteValueResponse{
 }
 //
 message ReadRequest{
-    string                  name  = 2;
-    repeated string         path  = 3;
-    Store                   store = 4;
-    uint64                  period = 5; 
+    string                  name     = 2;
+    repeated string         path     = 3;
+    Store                   store    = 4;
+    uint64                  period   = 5;
+    string                  owner    = 6;
+    int32                   priority = 7;
 }
 message ReadResponse{
-    string              name  = 2;
-    repeated string     path  = 3;
-    google.protobuf.Any value = 4;
-    Store               store = 7;
+    string                  name     = 2;
+    repeated string         path     = 3;
+    google.protobuf.Any     value    = 4;
+    Store                   store    = 5;
+    string                  owner    = 6;
+    int32                   priority = 7;
 }
 //
 message DeleteValueRequest{
-    string                  name  = 1;
-    repeated string         path  = 2;
-    Store                   store = 3;
+    string                  name     = 1;
+    repeated string         path     = 2;
+    Store                   store    = 3;
+    string                  owner    = 4;
+    int32                   priority = 5;
 }
 message DeleteValueResponse{
     string          name  = 1;
@@ -162,15 +172,22 @@ message StatsResponse{
 // sub messages
 message Update{
     repeated string     path  = 2;
-    google.protobuf.Any value = 3; 
+    google.protobuf.Any value = 3;
 }
 
 enum Store {
     CONFIG      = 0;
     STATE       = 1;
+    INTENDED    = 2;
 }
 
 message InstanceStats {
     string name = 1;
     map<string, int64> key_count_per_bucket = 2;
+}
+
+message Candidate {
+    string name     = 1;
+    string owner    = 2;
+    int32  priority = 3;
 }

@@ -16,8 +16,9 @@ limitations under the License.
 package cmd
 
 import (
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
 // discardCmd represents the discard command

@@ -19,8 +19,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
 var keyCount bool

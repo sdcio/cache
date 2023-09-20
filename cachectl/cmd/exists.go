@@ -18,8 +18,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/iptecharch/cache/client"
 	"github.com/spf13/cobra"
+
+	"github.com/iptecharch/cache/pkg/client"
 )
 
 // existsCmd represents the exists command

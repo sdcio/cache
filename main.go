@@ -3,18 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"time"
 
-	"github.com/iptecharch/cache/config"
-	"github.com/iptecharch/cache/server"
-	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
-
-	"net/http"
-	_ "net/http/pprof"
-
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
+
+	"github.com/iptecharch/cache/pkg/config"
+	"github.com/iptecharch/cache/pkg/server"
 )
 
 var configFile string
@@ -35,7 +33,7 @@ func main() {
 	if trace {
 		log.SetLevel(log.TraceLevel)
 	}
-	var s *server.Server[*sdcpb.TypedValue]
+	var s *server.Server
 
 	// TO BE REMOVED
 	go func() {
@@ -56,9 +54,7 @@ START:
 
 	ctx := context.TODO() // TODO:
 
-	bfn := func() *sdcpb.TypedValue { return &sdcpb.TypedValue{} }
-
-	s, err = server.NewServer(ctx, cfg, bfn)
+	s, err = server.NewServer(ctx, cfg)
 	if err != nil {
 		log.Errorf("failed to create server: %v", err)
 		time.Sleep(time.Second)
