@@ -226,10 +226,6 @@ func (s *Server) GetChanges(req *cachepb.GetChangesRequest, stream cachepb.Cache
 	}
 	// send updates
 	for _, upd := range updates {
-		// b, err := proto.Marshal(upd.V)
-		// if err != nil {
-		// 	return err
-		// }
 		err = stream.Send(&cachepb.GetChangesResponse{
 			Name:      req.GetName(),
 			Candidate: req.GetCandidate(),
@@ -262,6 +258,20 @@ func (s *Server) Discard(ctx context.Context, req *cachepb.DiscardRequest) (*cac
 	return &cachepb.DiscardResponse{}, nil
 }
 
+func (s *Server) Commit(ctx context.Context, req *cachepb.CommitRequest) (*cachepb.CommitResponse, error) {
+	if req.GetName() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
+	}
+	if req.GetCandidate() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "candidate cannot be empty")
+	}
+	err := s.cache.Commit(ctx, req.GetName(), req.GetCandidate())
+	if err != nil {
+		return nil, err
+	}
+	return &cachepb.CommitResponse{}, nil
+}
+
 func (s *Server) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cachepb.StatsResponse, error) {
 	ss, err := s.cache.Stats(ctx, req.GetName(), req.GetKeysCount())
 	if err != nil {
@@ -278,6 +288,17 @@ func (s *Server) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cachepb
 		}
 	}
 	return rsp, nil
+}
+
+func (s *Server) Watch(req *cachepb.WatchRequest, stream cachepb.Cache_WatchServer) error {
+	ctx := stream.Context()
+	pr, _ := peer.FromContext(ctx)
+	if log.GetLevel() >= log.DebugLevel {
+		id := xid.New()
+		log.Debugf("%s: Watch request from peer: %v: %v", id.String(), pr.Addr, req)
+		defer log.Debugf("%s: Watch request from peer %v done", id.String(), pr.Addr)
+	}
+	return s.watch(req, stream)
 }
 
 // helpers
@@ -379,4 +400,48 @@ func (s *Server) modifyDelete(ctx context.Context, req *cachepb.DeleteValueReque
 		Owner:    req.GetOwner(),
 		Priority: req.GetPriority(),
 	})
+}
+
+func (s *Server) watch(req *cachepb.WatchRequest, stream cachepb.Cache_WatchServer) error {
+	ctx := stream.Context()
+	var store cache.Store
+	switch req.GetStore() {
+	case cachepb.Store_CONFIG:
+		store = cache.StoreConfig
+	case cachepb.Store_STATE:
+		store = cache.StoreState
+	case cachepb.Store_INTENDED:
+		store = cache.StoreIntended
+	}
+
+	prefixes := make([][]string, 0, len(req.GetPath()))
+	for _, p := range req.GetPath() {
+		prefixes = append(prefixes, p.GetElem())
+	}
+
+	ch, err := s.cache.Watch(ctx, req.GetName(), store, prefixes)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case e, ok := <-ch:
+			if !ok {
+				return nil
+			}
+
+			err = stream.Send(
+				&cachepb.WatchResponse{
+					Path:  e.P,
+					Value: e.V,
+				})
+			if err != nil {
+				return err
+			}
+		}
+	}
 }

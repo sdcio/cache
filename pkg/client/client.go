@@ -33,6 +33,9 @@ type ClientConfig struct {
 	// number of read streams that can be opened concurrently
 	// defaults to 1
 	MaxReadStream int64
+	// number of read streams that can be opened concurrently
+	// defaults to 64
+	MaxWatchStream int64
 	// gRPC dial and unary RPCs timeout
 	// defaults to 5s
 	Timeout time.Duration
@@ -50,6 +53,9 @@ func New(ctx context.Context, ccfg *ClientConfig) (*Client, error) {
 	}
 	if ccfg.MaxReadStream <= 0 {
 		ccfg.MaxReadStream = 1
+	}
+	if ccfg.MaxWatchStream <= 0 {
+		ccfg.MaxWatchStream = 64
 	}
 	if ccfg.Timeout <= 0 {
 		ccfg.Timeout = defaultTimeout
@@ -297,6 +303,14 @@ func (c *Client) GetChanges(ctx context.Context, name, candidate string, opts ..
 	}
 }
 
+func (c *Client) Commit(ctx context.Context, name, candidate string, opts ...grpc.CallOption) error {
+	_, err := c.client.Commit(ctx, &cachepb.CommitRequest{
+		Name:      name,
+		Candidate: candidate,
+	}, opts...)
+	return err
+}
+
 // Discard changes made to a candidate
 func (c *Client) Discard(ctx context.Context, name, candidate string, opts ...grpc.CallOption) error {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
@@ -315,4 +329,49 @@ func (c *Client) Stats(ctx context.Context, name string, withKeyCount bool, opts
 		Name:      name,
 		KeysCount: withKeyCount,
 	}, opts...)
+}
+
+func (c *Client) Watch(ctx context.Context, name string, store cache.Store, prefixes [][]string, opts ...grpc.CallOption) (chan *cachepb.WatchResponse, error) {
+	var cStore cachepb.Store
+	switch store {
+	case cache.StoreConfig:
+		cStore = cachepb.Store_CONFIG
+	case cache.StoreState:
+		cStore = cachepb.Store_STATE
+	case cache.StoreIntended:
+		cStore = cachepb.Store_INTENDED
+	}
+	paths := make([]*cachepb.Path, 0, len(prefixes))
+	for _, pr := range prefixes {
+		paths = append(paths, &cachepb.Path{Elem: pr})
+	}
+	stream, err := c.client.Watch(ctx, &cachepb.WatchRequest{
+		Name:  name,
+		Store: cStore,
+		Path:  paths,
+	}, opts...)
+	if err != nil {
+		return nil, err
+	}
+	rspCh := make(chan *cachepb.WatchResponse)
+	go func() {
+		defer close(rspCh)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				rsp, err := stream.Recv()
+				if err != nil {
+					if strings.Contains(err.Error(), "EOF") {
+						break
+					}
+					log.Error("fail rcv", err)
+					return
+				}
+				rspCh <- rsp
+			}
+		}
+	}()
+	return rspCh, nil
 }

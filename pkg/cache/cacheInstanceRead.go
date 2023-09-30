@@ -277,12 +277,41 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Conte
 			if ee, ok := highPrioKVs[strings.Join(e.P, delimStr)]; ok {
 				if e.Priority < ee.Priority {
 					highPrioKVs[strings.Join(e.P, delimStr)] = e
+					continue
+				}
+				if e.Priority == ee.Priority {
+					if e.Timestamp > ee.Timestamp {
+						highPrioKVs[strings.Join(e.P, delimStr)] = e
+						continue
+					}
 				}
 				continue
 			}
 			highPrioKVs[strings.Join(e.P, delimStr)] = e
 		}
 	}
+}
+
+func (ci *cacheInstance) readValueFromIntendedStoreHighPrioCh(ctx context.Context, p []byte) (*Entry, error) {
+	var bucket = "intended"
+	kvs, err := ci.store.GetN(ctx, ci.cfg.Name, bucket, 1,
+		func(k []byte) bool {
+			lk := len(k)
+			// must include priority and TS
+			if lk < 4+8 {
+				return false
+			}
+			// check for prefix
+			return bytes.HasPrefix(k[4:lk-8], p)
+		})
+	if err != nil {
+		return nil, err
+	}
+	if len(kvs) == 0 {
+		return nil, store.ErrKeyNotFound
+	}
+	e, err := kvToEntry(kvs[0], bucket)
+	return e, err
 }
 
 func pathToPrefixPattern(path []string) (string, string, error) {

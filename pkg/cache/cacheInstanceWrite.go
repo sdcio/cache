@@ -135,15 +135,15 @@ func (ci *cacheInstance) deleteValueConfig(ctx context.Context, cname string, wo
 	if cname == "" {
 		return ci.store.DeleteValue(ctx, ci.cfg.Name, configBucketName, []byte(strings.Join(wo.Path, delimStr)))
 	}
-	f, err := ci.getCandidate(cname)
+	cand, err := ci.getCandidate(cname)
 	if err != nil {
 		return err
 	}
-	f.updates.Delete(wo.Path)
+	cand.updates.Delete(wo.Path)
 
-	f.m.Lock()
-	defer f.m.Unlock()
-	f.deletes[strings.Join(wo.Path, delimStr)] = struct{}{}
+	cand.m.Lock()
+	defer cand.m.Unlock()
+	cand.deletes[strings.Join(wo.Path, delimStr)] = struct{}{}
 	return nil
 }
 

@@ -331,6 +331,14 @@ func (c *cache) NumInstances() int {
 	return len(c.caches)
 }
 
+func (c *cache) Commit(ctx context.Context, name, candidate string) error {
+	ci, ok := c.getCacheInstance(ctx, name)
+	if !ok {
+		return fmt.Errorf("cache %q does not exist", name)
+	}
+	return ci.commit(ctx, candidate)
+}
+
 func (c *cache) Stats(ctx context.Context, name string, withKeysCount bool) (*StatsResponse, error) {
 	count := c.NumInstances()
 	rsp := &StatsResponse{
@@ -382,6 +390,59 @@ func (c *cache) Close() error {
 		ci.close()
 	}
 	return nil
+}
+
+func (c *cache) Clear(ctx context.Context, name string) error {
+	ci, ok := c.getCacheInstance(ctx, name)
+	if !ok {
+		return fmt.Errorf("cache %q does not exist", name)
+	}
+	return ci.clear(ctx)
+}
+
+func (c *cache) Watch(ctx context.Context, name string, store Store, prefixes [][]string) (chan *Entry, error) {
+	ci, ok := c.getCacheInstance(ctx, name)
+	if !ok {
+		return nil, fmt.Errorf("cache %q does not exist", name)
+	}
+	bucket := configBucketName
+	switch store {
+	case StoreConfig:
+	case StoreState:
+		bucket = stateBucketName
+	case StoreIntended:
+		bucket = intendedBucketName
+	}
+	bPrefixes := make([][]byte, 0, len(prefixes))
+	for _, pr := range prefixes {
+		bPrefixes = append(bPrefixes, []byte(strings.Join(pr, ",")))
+	}
+	kvc, err := ci.store.Watch(ctx, name, bucket, bPrefixes)
+	if err != nil {
+		return nil, err
+	}
+	eCh := make(chan *Entry)
+	go func() {
+		defer close(eCh)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case kv, ok := <-kvc:
+				if !ok {
+					return
+				}
+				kv.K = kv.K[1:]
+				e, err := kvToEntry(kv, bucket)
+				if err != nil {
+					log.Errorf("store %s/%s failed to convert KV to cache entry: %v", name, bucket, err)
+					return
+				}
+				eCh <- e
+			}
+		}
+	}()
+	return eCh, nil
 }
 
 func (c *cache) getCacheInstance(ctx context.Context, name string) (*cacheInstance, bool) {

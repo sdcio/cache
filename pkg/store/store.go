@@ -25,14 +25,30 @@ type Store interface {
 	GetAll(ctx context.Context, name, bucket string, fn ...SelectFn) (chan *KV, error)
 	GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte, fn ...SelectFn) (chan *KV, error)
 
+	GetN(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error)
+
+	Txn(ctx context.Context, name, bucket string, txnOpts *TxnOpts) error
+
+	Watch(ctx context.Context, name, bucket string, prefixes [][]byte) (chan *KV, error)
 	Close() error
 	Stats(ctx context.Context, name string) (*StoreStats, error)
+	Clear(ctx context.Context, name string) error
 }
 
 type SelectFn func(k []byte) bool
 
 type KV struct {
 	K, V []byte
+}
+
+type DelOpts struct {
+	K   []byte
+	Fns []SelectFn
+}
+
+type TxnOpts struct {
+	Updates []*KV
+	Deletes []*DelOpts
 }
 
 func WithPrefix(prefix []byte) SelectFn {
@@ -50,7 +66,7 @@ func New(typ, p string) Store {
 	case storeTypeBadgerDB:
 		return newBadgerDBStore(p)
 	default:
-		return newNoopStore()
+		return nil
 	}
 }
 

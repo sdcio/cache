@@ -29,8 +29,14 @@ service Cache {
     rpc GetChanges(GetChangesRequest)           returns (stream GetChangesResponse);
     // Discard changes made to a candidate
     rpc Discard(DiscardRequest)                 returns (DiscardResponse);
+    // Commit writes a candidate changes into the intended store
+    rpc Commit(CommitRequest)                   returns (CommitResponse);
     // Stats requests statistics from the cache server
     rpc Stats(StatsRequest)                     returns (StatsResponse);
+    // Clear wipes a cache
+    rpc Clear(ClearRequest)                     returns (ClearResponse);
+    // Watch
+    rpc Watch(WatchRequest)                     returns (stream WatchResponse);
 }
 //
 message GetRequest{
@@ -74,6 +80,7 @@ message CloneRequest{
 message CloneResponse{
     string clone = 1;
 }
+
 message CreateCandidateRequest{
     string name      = 1;
     string candidate = 2;
@@ -160,6 +167,12 @@ message DiscardRequest{
 }
 message DiscardResponse{}
 
+message CommitRequest{
+    string name      = 1;
+    string candidate = 2;
+}
+message CommitResponse{}
+
 message StatsRequest{
     string name      = 1;
     bool   keys_count = 2;
@@ -167,6 +180,21 @@ message StatsRequest{
 message StatsResponse{
     int64                       num_cache = 1;
     map<string, InstanceStats>  key_count = 2;
+}
+
+message ClearRequest{
+    string name      = 1;
+}
+message ClearResponse{}
+
+message WatchRequest{
+    string          name  = 1;
+    Store           store = 2;
+    repeated Path   path  = 3;
+}
+message WatchResponse{
+    repeated string path  = 1;
+    bytes           value = 2;
 }
 
 // sub messages
@@ -190,4 +218,8 @@ message Candidate {
     string name     = 1;
     string owner    = 2;
     int32  priority = 3;
+}
+
+message Path {
+    repeated string elem = 1;
 }

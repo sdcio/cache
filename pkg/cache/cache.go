@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -54,9 +55,13 @@ type Cache interface {
 	Discard(ctx context.Context, name, candidate string) error
 	// Close the underlying resources, like the persistent store
 	Close() error
+	// Commit candidate into the intended store
+	Commit(ctx context.Context, name, candidate string) error
 	// Stats
 	Stats(ctx context.Context, name string, withKeysCount bool) (*StatsResponse, error)
+	Clear(ctx context.Context, name string) error
 	NumInstances() int
+	Watch(ctx context.Context, name string, store Store, prefixes [][]string) (chan *Entry, error)
 }
 
 type Entry struct {
@@ -65,6 +70,11 @@ type Entry struct {
 	Priority  int32
 	P         []string
 	V         []byte
+}
+
+func (e *Entry) String() string {
+	return fmt.Sprintf("ts=%d, owner=%s, priority=%d, path=%v, value=%s",
+		e.Timestamp, e.Owner, e.Priority, e.P, e.V)
 }
 
 type CandidateDetails struct {

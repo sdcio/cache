@@ -9,8 +9,8 @@ grpc-server:
   max-recv-msg-size: 0 # defaults to 4 * 1024 * 1024 (4MB)
   # rpc-timeout: 60s # defaults to 60s
 
-  # write buffer size, 
-  # number of messages to buffer before they 
+  # write buffer size,
+  # number of messages to buffer before they
   # get picked up by the write workers
   # defaults to 100 000 if negative
   buffer-size: -1
@@ -18,12 +18,12 @@ grpc-server:
   # defaults to 16
   write-workers: 16
 
-cache: 
+cache:
   # persistent store type, 'badgerdb', 'boltdb' or ''
   store-type: badgerdb
   # directory to be used by the persistence store
   dir: ./cached/caches
-  # max number of caches 
+  # max number of caches
   # unlimited if eq to zero or negative
   max-caches: 0
   # TODOs
