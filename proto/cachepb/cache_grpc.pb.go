@@ -30,7 +30,10 @@ const (
 	Cache_Read_FullMethodName            = "/cache.proto.Cache/Read"
 	Cache_GetChanges_FullMethodName      = "/cache.proto.Cache/GetChanges"
 	Cache_Discard_FullMethodName         = "/cache.proto.Cache/Discard"
+	Cache_Commit_FullMethodName          = "/cache.proto.Cache/Commit"
 	Cache_Stats_FullMethodName           = "/cache.proto.Cache/Stats"
+	Cache_Clear_FullMethodName           = "/cache.proto.Cache/Clear"
+	Cache_Watch_FullMethodName           = "/cache.proto.Cache/Watch"
 )
 
 // CacheClient is the client API for Cache service.
@@ -59,8 +62,14 @@ type CacheClient interface {
 	GetChanges(ctx context.Context, in *GetChangesRequest, opts ...grpc.CallOption) (Cache_GetChangesClient, error)
 	// Discard changes made to a candidate
 	Discard(ctx context.Context, in *DiscardRequest, opts ...grpc.CallOption) (*DiscardResponse, error)
+	// Commit writes a candidate changes into the intended store
+	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error)
 	// Stats requests statistics from the cache server
 	Stats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error)
+	// Clear wipes a cache
+	Clear(ctx context.Context, in *ClearRequest, opts ...grpc.CallOption) (*ClearResponse, error)
+	// Watch
+	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Cache_WatchClient, error)
 }
 
 type cacheClient struct {
@@ -241,6 +250,15 @@ func (c *cacheClient) Discard(ctx context.Context, in *DiscardRequest, opts ...g
 	return out, nil
 }
 
+func (c *cacheClient) Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error) {
+	out := new(CommitResponse)
+	err := c.cc.Invoke(ctx, Cache_Commit_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *cacheClient) Stats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error) {
 	out := new(StatsResponse)
 	err := c.cc.Invoke(ctx, Cache_Stats_FullMethodName, in, out, opts...)
@@ -248,6 +266,47 @@ func (c *cacheClient) Stats(ctx context.Context, in *StatsRequest, opts ...grpc.
 		return nil, err
 	}
 	return out, nil
+}
+
+func (c *cacheClient) Clear(ctx context.Context, in *ClearRequest, opts ...grpc.CallOption) (*ClearResponse, error) {
+	out := new(ClearResponse)
+	err := c.cc.Invoke(ctx, Cache_Clear_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cacheClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (Cache_WatchClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Cache_ServiceDesc.Streams[3], Cache_Watch_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &cacheWatchClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Cache_WatchClient interface {
+	Recv() (*WatchResponse, error)
+	grpc.ClientStream
+}
+
+type cacheWatchClient struct {
+	grpc.ClientStream
+}
+
+func (x *cacheWatchClient) Recv() (*WatchResponse, error) {
+	m := new(WatchResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // CacheServer is the server API for Cache service.
@@ -276,8 +335,14 @@ type CacheServer interface {
 	GetChanges(*GetChangesRequest, Cache_GetChangesServer) error
 	// Discard changes made to a candidate
 	Discard(context.Context, *DiscardRequest) (*DiscardResponse, error)
+	// Commit writes a candidate changes into the intended store
+	Commit(context.Context, *CommitRequest) (*CommitResponse, error)
 	// Stats requests statistics from the cache server
 	Stats(context.Context, *StatsRequest) (*StatsResponse, error)
+	// Clear wipes a cache
+	Clear(context.Context, *ClearRequest) (*ClearResponse, error)
+	// Watch
+	Watch(*WatchRequest, Cache_WatchServer) error
 	mustEmbedUnimplementedCacheServer()
 }
 
@@ -318,8 +383,17 @@ func (UnimplementedCacheServer) GetChanges(*GetChangesRequest, Cache_GetChangesS
 func (UnimplementedCacheServer) Discard(context.Context, *DiscardRequest) (*DiscardResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Discard not implemented")
 }
+func (UnimplementedCacheServer) Commit(context.Context, *CommitRequest) (*CommitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Commit not implemented")
+}
 func (UnimplementedCacheServer) Stats(context.Context, *StatsRequest) (*StatsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Stats not implemented")
+}
+func (UnimplementedCacheServer) Clear(context.Context, *ClearRequest) (*ClearResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Clear not implemented")
+}
+func (UnimplementedCacheServer) Watch(*WatchRequest, Cache_WatchServer) error {
+	return status.Errorf(codes.Unimplemented, "method Watch not implemented")
 }
 func (UnimplementedCacheServer) mustEmbedUnimplementedCacheServer() {}
 
@@ -546,6 +620,24 @@ func _Cache_Discard_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Cache_Commit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CacheServer).Commit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Cache_Commit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CacheServer).Commit(ctx, req.(*CommitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Cache_Stats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StatsRequest)
 	if err := dec(in); err != nil {
@@ -562,6 +654,45 @@ func _Cache_Stats_Handler(srv interface{}, ctx context.Context, dec func(interfa
 		return srv.(CacheServer).Stats(ctx, req.(*StatsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _Cache_Clear_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClearRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CacheServer).Clear(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Cache_Clear_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CacheServer).Clear(ctx, req.(*ClearRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Cache_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WatchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(CacheServer).Watch(m, &cacheWatchServer{stream})
+}
+
+type Cache_WatchServer interface {
+	Send(*WatchResponse) error
+	grpc.ServerStream
+}
+
+type cacheWatchServer struct {
+	grpc.ServerStream
+}
+
+func (x *cacheWatchServer) Send(m *WatchResponse) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 // Cache_ServiceDesc is the grpc.ServiceDesc for Cache service.
@@ -604,8 +735,16 @@ var Cache_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Cache_Discard_Handler,
 		},
 		{
+			MethodName: "Commit",
+			Handler:    _Cache_Commit_Handler,
+		},
+		{
 			MethodName: "Stats",
 			Handler:    _Cache_Stats_Handler,
+		},
+		{
+			MethodName: "Clear",
+			Handler:    _Cache_Clear_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -622,6 +761,11 @@ var Cache_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetChanges",
 			Handler:       _Cache_GetChanges_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "Watch",
+			Handler:       _Cache_Watch_Handler,
 			ServerStreams: true,
 		},
 	},
