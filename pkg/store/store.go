@@ -3,18 +3,16 @@ package store
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
+	"errors"
 	"fmt"
 )
 
 type Store interface {
-	CreateCache(ctx context.Context, name string, cfg map[string]any, bucket ...string) error
+	CreateCache(ctx context.Context, name string) error
 	ListCaches(ctx context.Context) ([]string, error)
 	DeleteCache(ctx context.Context, name string) error
 
 	Clone(ctx context.Context, name, cname string) error
-	GetMeta(ctx context.Context, name string) (map[string]any, error)
-	LoadCache(ctx context.Context, name string) error
 
 	WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte) error
 
@@ -28,7 +26,6 @@ type Store interface {
 	GetN(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error)
 
 	Txn(ctx context.Context, name, bucket string, txnOpts *TxnOpts) error
-
 	Watch(ctx context.Context, name, bucket string, prefixes [][]byte) (chan *KV, error)
 	Close() error
 	Stats(ctx context.Context, name string) (*StoreStats, error)
@@ -58,49 +55,41 @@ func WithPrefix(prefix []byte) SelectFn {
 }
 
 const (
-	storeTypeBadgerDB = "badgerdb"
+	storeTypeBadgerDB       = "badgerdb"
+	storeTypeBadgerSingleDB = "badgerdbsingle"
+)
+const (
+	metaPrefix     uint8 = 0
+	configPrefix   uint8 = 1
+	statePrefix    uint8 = 2
+	intendedPrefix uint8 = 3
 )
 
-func New(typ, p string) Store {
+const (
+	deletePrefixBatchSize = 10
+)
+
+var sepBytes = []byte(",")
+
+var (
+	badgerTxnKey   = []byte("!badger!txn")
+	ErrKeyNotFound = errors.New("KeyNotFound")
+)
+
+func New(typ, p string) (Store, error) {
 	switch typ {
 	case storeTypeBadgerDB:
-		return newBadgerDBStore(p)
+		return newBadgerDBStore(p), nil
+	case storeTypeBadgerSingleDB:
+		return newBadgerSingleDBStore(p), nil
 	default:
-		return nil
+		return nil, fmt.Errorf("unknown store type %q", typ)
 	}
 }
 
 type StoreStats struct {
 	NumCache      int
 	KeysPerBucket map[string]int64
-}
-
-func metaToKV(meta map[string]any) []*KV {
-	rs := make([]*KV, 0, len(meta))
-	for k, v := range meta {
-		kv := &KV{
-			K: []byte(k),
-		}
-		switch v := v.(type) {
-		case string:
-			kv.V = []byte(v)
-		case bool:
-			kv.V = []byte(fmt.Sprintf("%t", v))
-		case uint8:
-			kv.V = []byte{v}
-		case uint16:
-			kv.V = make([]byte, 2)
-			binary.BigEndian.PutUint16(kv.V, v)
-		case uint32:
-			kv.V = make([]byte, 4)
-			binary.BigEndian.PutUint32(kv.V, v)
-		case uint64:
-			kv.V = make([]byte, 8)
-			binary.BigEndian.PutUint64(kv.V, v)
-		}
-		rs = append(rs, kv)
-	}
-	return rs
 }
 
 func kvToChan(ctx context.Context, k, v []byte, kvCh chan *KV) error {

@@ -49,6 +49,8 @@ type Cache interface {
 	ReadValuePeriodic(ctx context.Context, name string, ro *Opts, period time.Duration) (chan *Entry, error)
 	// DeleteValue deletes a value from a cache instance.
 	DeleteValue(ctx context.Context, name string, wo *Opts) error
+	// DeletePrefix deletes any key/value with the given prefix
+	DeletePrefix(ctx context.Context, name string, wo *Opts) error
 	// Diff returns the changes made to a candidate
 	Diff(ctx context.Context, name, candidate string) ([][]string, []*Entry, error)
 	// Discard drops the changes made to a candidate

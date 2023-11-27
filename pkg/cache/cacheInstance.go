@@ -29,8 +29,6 @@ const (
 var delimStr = ","
 var delimBytes = []byte(delimStr)
 
-var defaultBuckets = []string{configBucketName, stateBucketName}
-
 type cacheInstance struct {
 	cfg *CacheInstanceConfig
 
@@ -47,9 +45,11 @@ type CacheInstanceConfig struct {
 
 func createCacheInstance(ctx context.Context, cfg *CacheInstanceConfig, storage store.Store) (*cacheInstance, error) {
 	ci := newCacheInstance(cfg, storage)
-	storeConfig := map[string]any{} // metadata about the cache instance
-	err := ci.store.CreateCache(ctx, cfg.Name, storeConfig, defaultBuckets...)
-	return ci, err
+
+	if err := ci.store.CreateCache(ctx, cfg.Name); err != nil {
+		return nil, err
+	}
+	return ci, nil
 }
 
 func newCacheInstance(cfg *CacheInstanceConfig, storage store.Store) *cacheInstance {
@@ -78,49 +78,6 @@ func newCandidate(owner string, prio int32) *candidate {
 		m:        new(sync.RWMutex),
 		deletes:  make(map[string]struct{}),
 	}
-}
-
-func (ci *cacheInstance) initFromStore(ctx context.Context, wg *sync.WaitGroup) error {
-	err := ci.store.LoadCache(ctx, ci.cfg.Name)
-	if err != nil {
-		return err
-	}
-	mcfg, err := ci.store.GetMeta(ctx, ci.cfg.Name)
-	if err != nil {
-		return err
-	}
-	log.Infof("got cache %q with config: %+v\n", ci.cfg.Name, mcfg)
-
-	// var ok bool
-	// ci.cfg.Cached, ok = mcfg["cached"].(bool)
-	// if !ok {
-	// 	return fmt.Errorf("cache %q not loaded: invalid config: %#v", ci.cfg.Name, mcfg)
-	// }
-
-	// // if it's supposed to be cached,
-	// // load KVs into the tree
-	// if ci.cfg.Cached {
-	// 	wg.Add(2)
-	// 	go func() {
-	// 		defer wg.Done()
-	// 		n, err := ci.loadAll(ctx, ci.cfg.Name, "config")
-	// 		if err != nil {
-	// 			log.Errorf("Failed to load cache %s config bucket", ci.cfg.Name)
-	// 			return
-	// 		}
-	// 		log.Infof("cache=%s, bucket=%s: loaded %d KV", ci.cfg.Name, "config", n)
-	// 	}()
-	// 	go func() {
-	// 		defer wg.Done()
-	// 		n, err := ci.loadAll(ctx, ci.cfg.Name, "state")
-	// 		if err != nil {
-	// 			log.Errorf("Failed to load cache %s state bucket", ci.cfg.Name)
-	// 			return
-	// 		}
-	// 		log.Debugf("cache=%s, bucket=%s: loaded %d KV", ci.cfg.Name, "state", n)
-	// 	}()
-	// }
-	return nil
 }
 
 func (ci *cacheInstance) close() {

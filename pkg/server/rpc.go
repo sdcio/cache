@@ -394,7 +394,7 @@ func (s *Server) modifyDelete(ctx context.Context, req *cachepb.DeleteValueReque
 		store = cache.StoreIntended
 	}
 
-	return s.cache.DeleteValue(ctx, req.GetName(), &cache.Opts{
+	return s.cache.DeletePrefix(ctx, req.GetName(), &cache.Opts{
 		Store:    store,
 		Path:     req.GetPath(),
 		Owner:    req.GetOwner(),

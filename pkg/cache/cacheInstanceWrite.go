@@ -90,7 +90,6 @@ CH_LOOP:
 	}
 	// delete other values with same prio, owner, and path but diff ts
 	for _, kv := range kvs {
-		fmt.Println("deleting ", string(kv.K))
 		err = ci.store.DeleteValue(ctx, ci.cfg.Name, intendedBucketName, kv.K)
 		if err != nil {
 			log.Errorf("cache=%s, failed to delete key %x: %v", ci.cfg.Name, kv.K, err)
@@ -131,6 +130,18 @@ func (ci *cacheInstance) deleteValue(ctx context.Context, cname string, wo *Opts
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
 
+func (ci *cacheInstance) deletePrefix(ctx context.Context, cname string, wo *Opts) error {
+	switch wo.Store {
+	case StoreConfig:
+		return ci.deletePrefixConfig(ctx, cname, wo)
+	case StoreState:
+		return ci.deletePrefixState(ctx, wo)
+	case StoreIntended:
+		return ci.deletePrefixIntended(ctx, wo)
+	}
+	return fmt.Errorf("unknown store: %v", wo.Store)
+}
+
 func (ci *cacheInstance) deleteValueConfig(ctx context.Context, cname string, wo *Opts) error {
 	if cname == "" {
 		return ci.store.DeleteValue(ctx, ci.cfg.Name, configBucketName, []byte(strings.Join(wo.Path, delimStr)))
@@ -152,6 +163,42 @@ func (ci *cacheInstance) deleteValueState(ctx context.Context, wo *Opts) error {
 }
 
 func (ci *cacheInstance) deleteValueIntended(ctx context.Context, wo *Opts) error {
+	key := make([]byte, 4)
+	binary.BigEndian.PutUint32(key, uint32(wo.Priority))
+	opath := make([]string, 0, 1+len(wo.Path))
+	opath = append(opath, wo.Path...)
+	if wo.Owner != "" {
+		opath = append(opath, wo.Owner)
+	}
+	key = append(key, []byte(strings.Join(opath, delimStr))...)
+	lkey := len(key)
+	return ci.store.DeletePrefix(ctx, ci.cfg.Name, intendedBucketName, key,
+		func(k []byte) bool {
+			return lkey-len(k) == 8
+		})
+}
+
+func (ci *cacheInstance) deletePrefixConfig(ctx context.Context, cname string, wo *Opts) error {
+	if cname == "" {
+		return ci.store.DeletePrefix(ctx, ci.cfg.Name, configBucketName, []byte(strings.Join(wo.Path, delimStr)))
+	}
+	cand, err := ci.getCandidate(cname)
+	if err != nil {
+		return err
+	}
+	cand.updates.Delete(wo.Path)
+
+	cand.m.Lock()
+	defer cand.m.Unlock()
+	cand.deletes[strings.Join(wo.Path, delimStr)] = struct{}{}
+	return nil
+}
+
+func (ci *cacheInstance) deletePrefixState(ctx context.Context, wo *Opts) error {
+	return ci.store.DeletePrefix(ctx, ci.cfg.Name, stateBucketName, []byte(strings.Join(wo.Path, delimStr)))
+}
+
+func (ci *cacheInstance) deletePrefixIntended(ctx context.Context, wo *Opts) error {
 	key := make([]byte, 4)
 	binary.BigEndian.PutUint32(key, uint32(wo.Priority))
 	opath := make([]string, 0, 1+len(wo.Path))

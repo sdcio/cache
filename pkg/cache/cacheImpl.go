@@ -33,43 +33,31 @@ func (c *cache) Init(ctx context.Context) error {
 			return err
 		}
 	}
-	dirs, err := os.ReadDir(c.cfg.Dir)
+
+	log.Debugf("creating a store type %s under dir %q", c.cfg.StoreType, c.cfg.Dir)
+
+	var err error
+	c.store, err = store.New(c.cfg.StoreType, c.cfg.Dir)
 	if err != nil {
 		return err
 	}
-	log.Debugf("creating a store type %s under dir %q", c.cfg.StoreType, c.cfg.Dir)
-	c.store = store.New(c.cfg.StoreType, c.cfg.Dir)
-
 	log.Info("loading caches...")
-	wg := new(sync.WaitGroup)
-	numCaches := 0
-	for _, dir := range dirs {
-		if !dir.IsDir() {
-			continue
-		}
-		cacheName := dir.Name()
-		log.Debugf("initializing cache %q", cacheName)
+	caches, err := c.store.ListCaches(ctx)
+	if err != nil {
+		return err
+	}
 
+	c.m.Lock()
+	defer c.m.Unlock()
+	for _, cacheName := range caches {
 		ccfg := &CacheInstanceConfig{
 			Name:      cacheName,
 			StoreType: c.cfg.StoreType,
 			Dir:       c.cfg.Dir,
 		}
-
-		ci := newCacheInstance(ccfg, c.store)
-
-		err = ci.initFromStore(ctx, wg)
-		if err != nil {
-			return err
-		}
-
-		ci.m.Lock()
-		c.caches[cacheName] = ci
-		ci.m.Unlock()
-		numCaches++
+		c.caches[cacheName] = newCacheInstance(ccfg, c.store)
 	}
-	wg.Wait()
-	log.Infof("loaded %d caches", numCaches)
+	log.Infof("loaded %d caches", len(caches))
 	return nil
 }
 
@@ -308,6 +296,17 @@ func (c *cache) DeleteValue(ctx context.Context, name string, wo *Opts) error {
 	return ci.deleteValue(ctx, cname, wo)
 }
 
+func (c *cache) DeletePrefix(ctx context.Context, name string, wo *Opts) error {
+	var cname string
+	name, cname = splitCacheName(name)
+
+	ci, ok := c.getCacheInstance(ctx, name)
+	if !ok {
+		return fmt.Errorf("cache %q does not exist", name)
+	}
+	return ci.deletePrefix(ctx, cname, wo)
+}
+
 func (c *cache) Diff(ctx context.Context, name, candidate string) ([][]string, []*Entry, error) {
 	ci, ok := c.getCacheInstance(ctx, name)
 	if !ok {
@@ -432,7 +431,6 @@ func (c *cache) Watch(ctx context.Context, name string, store Store, prefixes []
 				if !ok {
 					return
 				}
-				kv.K = kv.K[1:]
 				e, err := kvToEntry(kv, bucket)
 				if err != nil {
 					log.Errorf("store %s/%s failed to convert KV to cache entry: %v", name, bucket, err)

@@ -19,9 +19,8 @@ bin/cachectl list
 bin/cachectl create -n target1
 bin/cachectl create -n target2
 bin/cachectl list
-bin/cachectl create-candidate -n target1 --candidate cl1
-bin/cachectl create-candidate -n target1 --candidate cl2 --owner me --priority 100
-bin/cachectl create-candidate -n target2 --candidate cl1
+bin/cachectl create-candidate -n target1 --candidate cl1 --owner me --priority 100
+bin/cachectl create-candidate -n target1 --candidate cl2 --owner other --priority 200
 bin/cachectl list
 bin/cachectl get -n target1
 bin/cachectl get -n target2
@@ -50,7 +49,7 @@ bin/cachectl read -n target1/cl1 -p a,b # a,b,c1 is also deleted from candidate
 # changes and discard
 bin/cachectl get-changes -n target1 --candidate cl1
 bin/cachectl discard -n target1 --candidate cl1
-bin/cachectl get-changes -n target1 --candidate cl1
+# bin/cachectl get-changes -n target1 --candidate cl1
 # delete caches
 bin/cachectl delete -n target1
 bin/cachectl delete -n target2
