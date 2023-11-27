@@ -1,8 +1,5 @@
-
-BRANCH :=$(shell git rev-parse --abbrev-ref HEAD)
-COMMIT := $(shell git rev-parse --short HEAD)
 REMOTE_REGISTRY :=registry.kmrd.dev/iptecharch/cache
-TAG := 0.0.0-$(BRANCH)-$(COMMIT)
+TAG := $(shell git describe --tags)
 IMAGE := $(REMOTE_REGISTRY):$(TAG)
 
 generate:
@@ -17,7 +14,9 @@ docker-build:
 	docker build . -t $(IMAGE)
 
 docker-push: docker-build
-	docker tag $(IMAGE) $(REMOTE_REGISTRY):latest
 	docker push $(IMAGE)
+
+release: docker-build
+	docker tag $(IMAGE) $(REMOTE_REGISTRY):latest
 	docker push $(REMOTE_REGISTRY):latest
 
