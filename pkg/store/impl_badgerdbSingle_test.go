@@ -8,15 +8,12 @@ import (
 	"testing"
 )
 
-const (
-	dbPath = "./db"
-)
-
-func Test_badgerDBStore_CreateCache(t *testing.T) {
+func Test_badgerDBSingleStore_CreateCache(t *testing.T) {
 	os.RemoveAll(dbPath)
 	defer func() {
 		os.RemoveAll(dbPath)
 	}()
+	os.Mkdir(dbPath, 0777)
 	type fields struct {
 		path string
 		m    *sync.RWMutex
@@ -49,11 +46,7 @@ func Test_badgerDBStore_CreateCache(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &badgerDBStore{
-				path: tt.fields.path,
-				m:    tt.fields.m,
-				dbs:  tt.fields.dbs,
-			}
+			s := newBadgerDBStore(dbPath)
 			if err := s.CreateCache(tt.args.ctx, tt.args.name); (err != nil) != tt.wantErr {
 				t.Errorf("badgerDBStore.CreateCache() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -75,7 +68,7 @@ func Test_badgerDBStore_CreateCache(t *testing.T) {
 
 }
 
-func Test_badgerDBStore_WriteValue(t *testing.T) {
+func Test_badgerDBSingleStore_WriteValue(t *testing.T) {
 	os.RemoveAll(dbPath)
 	defer func() {
 		os.RemoveAll(dbPath)
@@ -131,11 +124,7 @@ func Test_badgerDBStore_WriteValue(t *testing.T) {
 			wantErr: false,
 		},
 	}
-	s := &badgerDBStore{
-		path: dbPath,
-		m:    &sync.RWMutex{},
-		dbs:  map[string]*bdb{},
-	}
+	s := newBadgerSingleDBStore(dbPath)
 
 	err := s.CreateCache(context.TODO(), cacheName)
 	if err != nil {

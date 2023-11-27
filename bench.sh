@@ -20,7 +20,7 @@ cache3=target3
 
 bin/cachectl list
 bin/cachectl list | xargs -rn1 bin/cachectl delete -n
-bin/cachectl create -n $cache1 
+bin/cachectl create -n $cache1
 bin/cachectl create -n $cache2
 bin/cachectl create -n $cache3
 bin/cachectl list

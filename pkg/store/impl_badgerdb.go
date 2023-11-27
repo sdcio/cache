@@ -20,21 +20,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	metaPrefix     uint8 = 0
-	configPrefix   uint8 = 1
-	statePrefix    uint8 = 2
-	intendedPrefix uint8 = 3
-)
-
-const (
-	deletePrefixBatchSize = 10
-)
-
-var badgerTxnKey = []byte("!badger!txn")
-
-var ErrKeyNotFound = errors.New("KeyNotFound")
-
 type badgerDBStore struct {
 	path string
 	m    *sync.RWMutex
@@ -47,38 +32,47 @@ type bdb struct {
 }
 
 func newBadgerDBStore(p string) Store {
-	return &badgerDBStore{
+	s := &badgerDBStore{
 		path: p,
 		m:    new(sync.RWMutex),
 		dbs:  map[string]*bdb{},
 	}
+START:
+	dirs, err := os.ReadDir(p)
+	if err != nil {
+		log.Errorf("failed to read directory %q: %v", p, err)
+		time.Sleep(time.Second)
+		goto START
+	}
+	s.m.Lock()
+	defer s.m.Unlock()
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		dbName := dir.Name()
+		log.Infof("initializing db %q", dbName)
+		bdb := &bdb{}
+		dbCtx, cancel := context.WithCancel(context.Background())
+		bdb.cfn = cancel
+		var err error
+		bdb.db, err = s.openDB(dbCtx, s.dbDirName(dbName))
+		if err != nil {
+			log.Errorf("failed to open DB %q: %v", dbName, err)
+			continue
+		}
+		s.dbs[dbName] = bdb
+	}
+	return s
 }
 
-func (s *badgerDBStore) CreateCache(ctx context.Context, name string, meta map[string]any, bucket ...string) error {
+func (s *badgerDBStore) CreateCache(ctx context.Context, name string) error {
 	bdb := &bdb{}
 	dbCtx, cancel := context.WithCancel(context.Background())
 	bdb.cfn = cancel
 
 	var err error
 	bdb.db, err = s.openDB(dbCtx, s.dbDirName(name))
-	if err != nil {
-		return err
-	}
-	// create buckets
-	err = bdb.db.Update(func(tx *badger.Txn) error {
-		// create cache config
-		for _, kv := range metaToKV(meta) {
-			// append meta prefix
-			kv.K = append(kv.K, 0)
-			copy(kv.K[1:], kv.K)
-			kv.K[0] = metaPrefix
-			err = tx.Set(kv.K, kv.V)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 	if err != nil {
 		return err
 	}
@@ -122,11 +116,7 @@ func (s *badgerDBStore) DeleteCache(ctx context.Context, name string) error {
 }
 
 func (s *badgerDBStore) Clone(ctx context.Context, name, cname string) error {
-	cfg, err := s.GetMeta(ctx, name)
-	if err != nil {
-		return err
-	}
-	err = s.CreateCache(ctx, cname, cfg)
+	err := s.CreateCache(ctx, cname)
 	if err != nil {
 		return err
 	}
@@ -365,65 +355,6 @@ func (s *badgerDBStore) GetAll(ctx context.Context, name, bucket string, fn ...S
 	return kvCh, nil
 }
 
-func (s *badgerDBStore) GetN2(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error) {
-	if bucket == "" {
-		bucket = "config"
-	}
-
-	s.m.RLock()
-	defer s.m.RUnlock()
-
-	db, ok := s.dbs[name]
-	if !ok {
-		return nil, fmt.Errorf("unknown cache name %s", name)
-	}
-	prefix := []byte{configPrefix}
-	switch bucket {
-	case "config":
-	case "state":
-		prefix = []byte{statePrefix}
-	case "intended":
-		prefix = []byte{intendedPrefix}
-	}
-
-	rkvs := make([]*KV, 0, n)
-	stream := db.db.NewStream()
-	stream.NumGo = 1
-	stream.Prefix = prefix
-	readkv := uint64(0)
-	stream.ChooseKey = func(item *badger.Item) bool { return readkv < n }
-	stream.Send = func(buf *z.Buffer) error {
-		kvs, err := badger.BufferToKVList(buf)
-		if err != nil {
-			return err
-		}
-	OUTER:
-		for _, kv := range kvs.GetKv() {
-			for _, sfn := range fn {
-				if !sfn(kv.GetKey()[1:]) {
-					continue OUTER
-				}
-			}
-			kb := make([]byte, len(kv.GetKey()[1:]))
-			vb := make([]byte, len(kv.GetValue()))
-			copy(kb, kv.GetKey()[1:])
-			copy(vb, kv.GetValue())
-			readkv++
-			rkvs = append(rkvs,
-				&KV{
-					K: kb,
-					V: vb,
-				})
-		}
-		return nil
-	}
-	err := stream.Orchestrate(ctx)
-	if err != nil {
-		log.Errorf("stream orchestrate error: %v", err)
-	}
-	return rkvs, nil
-}
-
 func (s *badgerDBStore) GetN(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error) {
 	if bucket == "" {
 		bucket = "config"
@@ -480,7 +411,7 @@ func (s *badgerDBStore) GetN(ctx context.Context, name, bucket string, n uint64,
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read values based on prefix from cache %s: %v", name, err)
+		return nil, fmt.Errorf("failed to read N values from cache %s: %v", name, err)
 	}
 	return rkvs, nil
 }
@@ -505,7 +436,7 @@ func (s *badgerDBStore) GetPrefixN(ctx context.Context, name, bucket string, pre
 				item := it.Item()
 				k := item.KeyCopy(nil)
 				if len(k) > prefixLen &&
-					!bytes.HasPrefix(k[prefixLen:], []byte(",")) {
+					!bytes.HasPrefix(k[prefixLen:], sepBytes) {
 					continue
 				}
 				for _, sfn := range fn {
@@ -588,7 +519,7 @@ func (s *badgerDBStore) Watch(ctx context.Context, name, bucket string, prefixes
 						continue
 					}
 					kvc <- &KV{
-						K: kvitem.GetKey(),
+						K: kvitem.GetKey()[1:],
 						V: kvitem.GetValue(),
 					}
 				}
@@ -783,7 +714,7 @@ func getPrefixFn(ctx context.Context, indexName, bucket string, prefix, pattern 
 					continue
 				}
 				if len(k) > prefixLen &&
-					!bytes.HasPrefix(k[prefixLen:], []byte(",")) {
+					!bytes.HasPrefix(k[prefixLen:], sepBytes) {
 					continue
 				}
 				for _, sfn := range fn {
@@ -839,7 +770,6 @@ func getPrefixes(bucket string, prefix []byte) [][]byte {
 func (db *bdb) deleteKeys(keys [][]byte) error {
 	return db.db.Update(func(txn *badger.Txn) error {
 		for _, key := range keys {
-			fmt.Printf("deleting %x\n", key)
 			if err := txn.Delete(key); err != nil {
 				return err
 			}
