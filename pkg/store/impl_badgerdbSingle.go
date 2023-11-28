@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -417,7 +418,9 @@ func (s *badgerSingleDBStore) Txn(ctx context.Context, name, bucket string, txnO
 	defer s.m.RUnlock()
 
 	if index, ok := s.cacheIndexes[name]; ok {
-		return s.db.Update(func(txn *badger.Txn) error {
+		var err error
+	RETRY:
+		err = s.db.Update(func(txn *badger.Txn) error {
 			var err error
 			for _, del := range txnOpts.Deletes {
 				select {
@@ -444,6 +447,14 @@ func (s *badgerSingleDBStore) Txn(ctx context.Context, name, bucket string, txnO
 			}
 			return nil
 		})
+		if err != nil {
+			// ugly: https://github.com/dgraph-io/badger/issues/742
+			if strings.HasPrefix(err.Error(), "Transaction Conflict.") {
+				goto RETRY
+			}
+			return err
+		}
+		return nil
 	}
 
 	return fmt.Errorf("cache %q does not exist", name)
@@ -605,7 +616,7 @@ func (s *badgerSingleDBStore) deletePrefixSingleFn(bucket string, index uint16, 
 			item := it.Item()
 			key := item.KeyCopy(nil)
 			for _, sfn := range fn {
-				if !sfn(key[1:]) {
+				if !sfn(key[3:]) {
 					continue OUTER // NOT GOTO !!!!!
 				}
 			}
