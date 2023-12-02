@@ -65,6 +65,9 @@ func (ci *cacheInstance) readValueCh(ctx context.Context, cname string, ro *Opts
 		case StoreIntended:
 			bucket = intendedBucketName
 			err = ci.readPrefixFromIntendedStoreCh(ctx, ro.Priority, ro.Owner, []byte(prefix), rsCh)
+		case StoreMetadata:
+			bucket = intendedBucketName
+			err = ci.readFromMetadataStoreCh(ctx, []byte(prefix), rsCh)
 		}
 		if err != nil {
 			log.Errorf("failed to run query from store: %v", err)
@@ -312,6 +315,23 @@ func (ci *cacheInstance) readValueFromIntendedStoreHighPrioCh(ctx context.Contex
 	}
 	e, err := kvToEntry(kvs[0], bucket)
 	return e, err
+}
+
+func (ci *cacheInstance) readFromMetadataStoreCh(ctx context.Context, key []byte, kvCh chan *Entry) error {
+	var bucket = "metadata"
+	v, err := ci.store.GetValue(ctx, ci.cfg.Name, bucket, key)
+	if err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case kvCh <- &Entry{
+		P: []string{string(key)},
+		V: v,
+	}:
+	}
+	return nil
 }
 
 func pathToPrefixPattern(path []string) (string, string, error) {

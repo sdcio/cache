@@ -312,6 +312,8 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 		store = cache.StoreState
 	case cachepb.Store_INTENDED:
 		store = cache.StoreIntended
+	case cachepb.Store_METADATA:
+		store = cache.StoreMetadata
 	}
 	var ch chan *cache.Entry
 	var err error
@@ -368,10 +370,14 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 func (s *Server) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest) error {
 	var store cache.Store
 	switch req.GetStore() {
+	case cachepb.Store_CONFIG:
+		store = cache.StoreConfig
 	case cachepb.Store_STATE:
 		store = cache.StoreState
 	case cachepb.Store_INTENDED:
 		store = cache.StoreIntended
+	case cachepb.Store_METADATA:
+		store = cache.StoreMetadata
 	}
 	// write the bytes to the cache,
 	// this method will not unmarshal the bytes into T
@@ -388,10 +394,14 @@ func (s *Server) modifyDelete(ctx context.Context, req *cachepb.DeleteValueReque
 	// delete value from cache
 	var store cache.Store
 	switch req.GetStore() {
+	case cachepb.Store_CONFIG:
+		store = cache.StoreConfig
 	case cachepb.Store_STATE:
 		store = cache.StoreState
 	case cachepb.Store_INTENDED:
 		store = cache.StoreIntended
+	case cachepb.Store_METADATA:
+		store = cache.StoreMetadata
 	}
 
 	return s.cache.DeletePrefix(ctx, req.GetName(), &cache.Opts{

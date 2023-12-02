@@ -21,6 +21,7 @@ const (
 	configBucketName   = "config"
 	stateBucketName    = "state"
 	intendedBucketName = "intended"
+	metadataBucketName = "metadata"
 
 	// max int32
 	defaultWritePriority = 0x7FFFFFFF
@@ -162,15 +163,20 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 		return nil, nil, fmt.Errorf("cache %q: candidate %q does not exist", ci.cfg.Name, candidate)
 	}
 
-	dels := make([][]string, 0, len(cand.deletes))
+	lCandDel := len(cand.deletes)
+
+	// results
+	dels := make([][]string, 0, lCandDel)
 	es := make([]*Entry, 0)
+
 	// deletes
 	candPb := make([]byte, 4)
 	binary.BigEndian.PutUint32(candPb, uint32(cand.priority))
 	for p := range cand.deletes {
 		pb := []byte(p)
 		lpb := len(pb)
-		// get 2 keys/values, 2 highest priorities
+
+		// get 2 keys/values i.e 2 highest priorities
 		kvs, err := ci.store.GetN(ctx, ci.cfg.Name, intendedBucketName, 2,
 			func(k []byte) bool {
 				lk := len(k)
@@ -194,7 +200,7 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 		switch lkvs {
 		case 0:
 		case 1:
-			//
+			// got a single value from the intended store
 			highP := int32(binary.BigEndian.Uint32(kvs[0].K[:4]))
 			switch {
 			case highP == cand.priority:
@@ -229,10 +235,11 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 	ts := uint64(time.Now().UnixNano())
 	err := cand.updates.Query([]string{},
 		func(path []string, _ *ctree.Leaf, val interface{}) error {
+			log.Infof("query path %v", path)
 			vt := val.([]byte)
 			bPath := []byte(strings.Join(path, delimStr))
 			e, err := ci.readValueFromIntendedStoreHighPrioCh(ctx, bPath)
-			log.Debugf("highest priority for path %v: %+v: %v\n", path, e, err)
+			log.Infof("highest priority for path %v: %+v: %v", path, e, err)
 			if err != nil {
 				if errors.Is(err, store.ErrKeyNotFound) {
 					es = append(es, &Entry{
@@ -248,13 +255,14 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 			}
 			switch {
 			case e.Priority >= cand.priority:
-				es = append(es, &Entry{
+				e := &Entry{
 					Timestamp: ts,
 					Owner:     cand.owner,
 					Priority:  cand.priority,
 					P:         path,
 					V:         vt,
-				})
+				}
+				es = append(es, e)
 			case e.Priority < cand.priority:
 				es = append(es, e)
 			}
@@ -263,10 +271,10 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 	if err != nil {
 		return nil, nil, err
 	}
-	log.Debugf("cache %q: candidate %q diff result\n", ci.cfg.Name, candidate)
-	log.Debugf("cache %q: deletes: %v\n", ci.cfg.Name, dels)
+	log.Infof("cache %q: candidate %q diff result\n", ci.cfg.Name, candidate)
+	log.Infof("cache %q: deletes: %v\n", ci.cfg.Name, dels)
 	for i, e := range es {
-		log.Debugf("cache %q: updates: %d: %s\n", ci.cfg.Name, i, e)
+		log.Infof("cache %q: updates: %d: %s\n", ci.cfg.Name, i, e)
 	}
 	return dels, es, nil
 }

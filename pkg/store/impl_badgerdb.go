@@ -511,10 +511,6 @@ func (s *badgerDBStore) Watch(ctx context.Context, name, bucket string, prefixes
 		err := db.db.Subscribe(ctx,
 			func(kv *badger.KVList) error {
 				for _, kvitem := range kv.GetKv() {
-					// fmt.Printf("k:%d: %x\n", len(kvitem.GetKey()), kvitem.GetKey())
-					// fmt.Printf("v:%d: %x\n", len(kvitem.GetValue()), kvitem.GetValue())
-					// fmt.Println(kvitem.String())
-					// fmt.Println()
 					if bytes.Equal(badgerTxnKey, kvitem.GetKey()) {
 						continue
 					}

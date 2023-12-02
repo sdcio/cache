@@ -207,6 +207,7 @@ enum Store {
     CONFIG      = 0;
     STATE       = 1;
     INTENDED    = 2;
+    METADATA    = 3;
 }
 
 message InstanceStats {

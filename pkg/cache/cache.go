@@ -15,6 +15,7 @@ const (
 	StoreConfig   Store = 0
 	StoreState    Store = 1
 	StoreIntended Store = 2
+	StoreMetadata Store = 3
 )
 
 type Cache interface {
