@@ -184,6 +184,8 @@ func (c *Client) Modify(ctx context.Context, name string, wo *ClientOpts, dels [
 		pbStore = cachepb.Store_STATE
 	case cache.StoreIntended:
 		pbStore = cachepb.Store_INTENDED
+	case cache.StoreMetadata:
+		pbStore = cachepb.Store_METADATA
 	}
 	for _, del := range dels {
 		err = stream.Send(&cachepb.ModifyRequest{
@@ -243,6 +245,8 @@ func (c *Client) Read(ctx context.Context, name string, ro *ClientOpts, paths []
 			cStore = cachepb.Store_STATE
 		case cache.StoreIntended:
 			cStore = cachepb.Store_INTENDED
+		case cache.StoreMetadata:
+			cStore = cachepb.Store_METADATA
 		}
 		for _, p := range paths {
 			wg.Add(1)

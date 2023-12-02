@@ -20,6 +20,9 @@ func (ci *cacheInstance) writeValue(ctx context.Context, cname string, wo *Opts,
 		return ci.writeValueState(ctx, wo, b)
 	case StoreIntended:
 		return ci.writeValueIntended(ctx, wo, b)
+	case StoreMetadata:
+		k := strings.Join(wo.Path, delimStr)
+		return ci.writeValueMetadata(ctx, []byte(k), b)
 	}
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
@@ -98,6 +101,11 @@ CH_LOOP:
 	return nil
 }
 
+func (ci *cacheInstance) writeValueMetadata(ctx context.Context, k, v []byte) error {
+	log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, metadataBucketName, k, v)
+	return ci.store.WriteValue(ctx, ci.cfg.Name, metadataBucketName, k, v)
+}
+
 func (ci *cacheInstance) writeValueConfigCandidate(ctx context.Context, cname string, wo *Opts, v []byte) error {
 	// write to candidate
 	ci.m.Lock()
@@ -126,6 +134,8 @@ func (ci *cacheInstance) deleteValue(ctx context.Context, cname string, wo *Opts
 		return ci.deleteValueState(ctx, wo)
 	case StoreIntended:
 		return ci.deleteValueIntended(ctx, wo)
+	case StoreMetadata:
+		return ci.deleteValueMetadata(ctx, wo)
 	}
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
@@ -138,6 +148,8 @@ func (ci *cacheInstance) deletePrefix(ctx context.Context, cname string, wo *Opt
 		return ci.deletePrefixState(ctx, wo)
 	case StoreIntended:
 		return ci.deletePrefixIntended(ctx, wo)
+	case StoreMetadata:
+		return ci.deletePrefixMetadata(ctx, wo)
 	}
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
@@ -174,8 +186,12 @@ func (ci *cacheInstance) deleteValueIntended(ctx context.Context, wo *Opts) erro
 	lkey := len(key)
 	return ci.store.DeletePrefix(ctx, ci.cfg.Name, intendedBucketName, key,
 		func(k []byte) bool {
-			return lkey-len(k) == 8
+			return len(k)-lkey == 8
 		})
+}
+
+func (ci *cacheInstance) deleteValueMetadata(ctx context.Context, wo *Opts) error {
+	return ci.store.DeleteValue(ctx, ci.cfg.Name, metadataBucketName, []byte(strings.Join(wo.Path, delimStr)))
 }
 
 func (ci *cacheInstance) deletePrefixConfig(ctx context.Context, cname string, wo *Opts) error {
@@ -210,6 +226,11 @@ func (ci *cacheInstance) deletePrefixIntended(ctx context.Context, wo *Opts) err
 	lkey := len(key)
 	return ci.store.DeletePrefix(ctx, ci.cfg.Name, intendedBucketName, key,
 		func(k []byte) bool {
-			return lkey-len(k) == 8
+			return len(k)-lkey >= 8
+
 		})
+}
+
+func (ci *cacheInstance) deletePrefixMetadata(ctx context.Context, wo *Opts) error {
+	return ci.store.DeletePrefix(ctx, ci.cfg.Name, metadataBucketName, []byte(strings.Join(wo.Path, delimStr)))
 }

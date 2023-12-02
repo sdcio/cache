@@ -596,7 +596,7 @@ func bucketPrefix(bucket string) uint8 {
 }
 
 func buildFullKey(bucket string, index uint16, k []byte) []byte {
-	fk := make([]byte, 0, 1+2+1+len(k))
+	fk := make([]byte, 0, 1+2+len(k))
 	fk = append(fk, bucketPrefix(bucket))    // 1
 	fk = append(fk, cacheIndexKey(index)...) // 2
 	fk = append(fk, k...)
