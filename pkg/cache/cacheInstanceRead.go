@@ -179,7 +179,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreCh(ctx context.Context, prio
 					bytes.HasSuffix(k[:lk-8], ownerB) // the key ends with the owner and 8 bytes for a timestamp.
 			})
 	case prio == 0:
-		return ci.readPrefixFromIntendedStoreHighPrioCh(ctx, prefix, kvCh)
+		return ci.readPrefixFromIntendedStoreHighPrioCh(ctx, prefix, ownerB, kvCh)
 	default:
 		fprefix := make([]byte, 4+len(prefix))
 		binary.BigEndian.PutUint32(fprefix, uint32(prio))
@@ -194,7 +194,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreCh(ctx context.Context, prio
 				if owner == "" {
 					return true
 				}
-				return bytes.HasSuffix(k[:lk-8], ownerB)
+				return hasOwner(k, ownerB)
 			})
 	}
 	if err != nil {
@@ -224,8 +224,9 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreCh(ctx context.Context, prio
 	}
 }
 
-func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Context, prefix []byte, kvCh chan *Entry) error {
+func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Context, prefix, owner []byte, kvCh chan *Entry) error {
 	var bucket = "intended"
+	withOwner := len(owner) > 0
 	vCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket,
 		func(k []byte) bool {
 			lk := len(k)
@@ -234,7 +235,16 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Conte
 				return false
 			}
 			// check for prefix
-			return bytes.HasPrefix(k[4:lk-8], prefix)
+			if !bytes.HasPrefix(k[4:lk-8], prefix) {
+				return false
+			}
+			// check for prefix
+			if !withOwner {
+				return true
+			}
+			// check for owner and prefix
+			return hasOwner(k, owner)
+
 		})
 	if err != nil {
 		return err
@@ -385,4 +395,8 @@ func kvToEntry(v *store.KV, bucket string) (*Entry, error) {
 		return e, nil
 	}
 	return nil, fmt.Errorf("unknown bucket name %q", bucket)
+}
+
+func hasOwner(k, owner []byte) bool {
+	return bytes.HasSuffix(k[:len(k)-8], owner)
 }
