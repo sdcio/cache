@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	dbName             = "cached"
-	metaSinglePrefix   = uint8(0)
-	cachesSinglePrefix = uint8(1)
+	dbName = "cached"
+	// metaSinglePrefix = uint8(0)
+	//cachesSinglePrefix = uint8(1)
 )
 
 type badgerSingleDBStore struct {
@@ -65,7 +65,7 @@ LOAD_CACHES:
 		opts := badger.DefaultIteratorOptions
 		// opts.PrefetchValues = false
 		opts.PrefetchSize = 0xFFFF
-		prefix := []byte{metaSinglePrefix}
+		prefix := []byte{metaPrefix}
 		it := txn.NewIterator(opts)
 		defer it.Close()
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
@@ -591,6 +591,8 @@ func bucketPrefix(bucket string) uint8 {
 		return statePrefix
 	case "intended":
 		return intendedPrefix
+	case "metadata":
+		return intentMetaPrefix
 	}
 	return 0
 }
@@ -641,7 +643,7 @@ func (s *badgerSingleDBStore) clear(ctx context.Context, name string) error {
 	if index, ok := s.cacheIndexes[name]; ok {
 		return s.db.Update(func(txn *badger.Txn) error {
 			fk := make([]byte, 1, 3)
-			fk[0] = metaSinglePrefix
+			fk[0] = metaPrefix
 			fk = append(fk, cacheIndexKey(index)...)
 
 			opts := badger.DefaultIteratorOptions

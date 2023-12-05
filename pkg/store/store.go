@@ -59,10 +59,11 @@ const (
 	storeTypeBadgerSingleDB = "badgerdbsingle"
 )
 const (
-	metaPrefix     uint8 = 0
-	configPrefix   uint8 = 1
-	statePrefix    uint8 = 2
-	intendedPrefix uint8 = 3
+	metaPrefix       uint8 = 0
+	configPrefix     uint8 = 1
+	statePrefix      uint8 = 2
+	intendedPrefix   uint8 = 3
+	intentMetaPrefix uint8 = 4
 )
 
 const (

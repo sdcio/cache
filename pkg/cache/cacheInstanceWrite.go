@@ -21,8 +21,7 @@ func (ci *cacheInstance) writeValue(ctx context.Context, cname string, wo *Opts,
 	case StoreIntended:
 		return ci.writeValueIntended(ctx, wo, b)
 	case StoreMetadata:
-		k := strings.Join(wo.Path, delimStr)
-		return ci.writeValueMetadata(ctx, []byte(k), b)
+		return ci.writeValueMetadata(ctx, wo, b)
 	}
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
@@ -101,7 +100,8 @@ CH_LOOP:
 	return nil
 }
 
-func (ci *cacheInstance) writeValueMetadata(ctx context.Context, k, v []byte) error {
+func (ci *cacheInstance) writeValueMetadata(ctx context.Context, wo *Opts, v []byte) error {
+	k := []byte(strings.Join(wo.Path, delimStr))
 	log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, metadataBucketName, k, v)
 	return ci.store.WriteValue(ctx, ci.cfg.Name, metadataBucketName, k, v)
 }
