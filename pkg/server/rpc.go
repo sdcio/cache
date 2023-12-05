@@ -21,18 +21,12 @@ func (s *Server) Get(ctx context.Context, req *cachepb.GetRequest) (*cachepb.Get
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "name cannot be empty")
 	}
-	// cfg, err := s.cache.GetDetails(ctx, req.GetName())
-	// if err != nil {
-	// 	return nil, status.Errorf(codes.Internal, "%v", err)
-	// }
 	cands, err := s.cache.Candidates(ctx, req.GetName())
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "could not retrieve candidates list: %v", err)
 	}
 	rsp := &cachepb.GetResponse{
-		Name: req.GetName(),
-		// Ephemeral: cfg.Ephemeral,
-		// Cached:    cfg.Cached,
+		Name:      req.GetName(),
 		Candidate: make([]*cachepb.Candidate, 0, len(cands)),
 	}
 	for _, cd := range cands {
@@ -304,23 +298,12 @@ func (s *Server) Watch(req *cachepb.WatchRequest, stream cachepb.Cache_WatchServ
 // helpers
 func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer) error {
 	ctx := stream.Context()
-	var store cache.Store
-	switch req.GetStore() {
-	case cachepb.Store_CONFIG:
-		store = cache.StoreConfig
-	case cachepb.Store_STATE:
-		store = cache.StoreState
-	case cachepb.Store_INTENDED:
-		store = cache.StoreIntended
-	case cachepb.Store_METADATA:
-		store = cache.StoreMetadata
-	}
 	var ch chan *cache.Entry
 	var err error
 	switch req.GetPeriod() {
 	case 0:
 		ch, err = s.cache.ReadValue(ctx, req.GetName(), &cache.Opts{
-			Store:    store,
+			Store:    getCacheStore(req.GetStore()),
 			Path:     req.GetPath(),
 			Owner:    req.GetOwner(),
 			Priority: req.GetPriority(),
@@ -334,7 +317,7 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 			period = time.Second
 		}
 		ch, err = s.cache.ReadValuePeriodic(ctx, req.GetName(), &cache.Opts{
-			Store:    store,
+			Store:    getCacheStore(req.GetStore()),
 			Path:     req.GetPath(),
 			Owner:    req.GetOwner(),
 			Priority: req.GetPriority(),
@@ -368,23 +351,12 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 }
 
 func (s *Server) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest) error {
-	var store cache.Store
-	switch req.GetStore() {
-	case cachepb.Store_CONFIG:
-		store = cache.StoreConfig
-	case cachepb.Store_STATE:
-		store = cache.StoreState
-	case cachepb.Store_INTENDED:
-		store = cache.StoreIntended
-	case cachepb.Store_METADATA:
-		store = cache.StoreMetadata
-	}
 	// write the bytes to the cache,
 	// this method will not unmarshal the bytes into T
 	return s.cache.WriteValue(ctx, req.GetName(), &cache.Opts{
 		Owner:    req.GetOwner(),
 		Priority: req.GetPriority(),
-		Store:    store,
+		Store:    getCacheStore(req.GetStore()),
 		Path:     req.GetPath(),
 	}, req.GetValue().GetValue(),
 	)
@@ -392,20 +364,8 @@ func (s *Server) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest
 
 func (s *Server) modifyDelete(ctx context.Context, req *cachepb.DeleteValueRequest) error {
 	// delete value from cache
-	var store cache.Store
-	switch req.GetStore() {
-	case cachepb.Store_CONFIG:
-		store = cache.StoreConfig
-	case cachepb.Store_STATE:
-		store = cache.StoreState
-	case cachepb.Store_INTENDED:
-		store = cache.StoreIntended
-	case cachepb.Store_METADATA:
-		store = cache.StoreMetadata
-	}
-
 	return s.cache.DeletePrefix(ctx, req.GetName(), &cache.Opts{
-		Store:    store,
+		Store:    getCacheStore(req.GetStore()),
 		Path:     req.GetPath(),
 		Owner:    req.GetOwner(),
 		Priority: req.GetPriority(),
@@ -453,5 +413,18 @@ func (s *Server) watch(req *cachepb.WatchRequest, stream cachepb.Cache_WatchServ
 				return err
 			}
 		}
+	}
+}
+
+func getCacheStore(pbStore cachepb.Store) cache.Store {
+	switch pbStore {
+	default: // cachepb.Store_CONFIG:
+		return cache.StoreConfig
+	case cachepb.Store_STATE:
+		return cache.StoreState
+	case cachepb.Store_INTENDED:
+		return cache.StoreIntended
+	case cachepb.Store_METADATA:
+		return cache.StoreMetadata
 	}
 }
