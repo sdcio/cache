@@ -187,19 +187,25 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Conte
 	if err != nil {
 		return err
 	}
-	highPrioKVs := make(map[string]*Entry)
-
+	// this struct keeps track of the highest priority entries
+	// per path.
+	hpr := &highPriorityReader{
+		highPrioEntries: map[string][]*Entry{},
+		highestPriority: -1,
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case v, ok := <-vCh:
 			if !ok {
-				for _, e := range highPrioKVs {
-					select {
-					case kvCh <- e:
-					case <-ctx.Done():
-						return ctx.Err()
+				for _, es := range hpr.highPrioEntries {
+					for _, e := range es {
+						select {
+						case kvCh <- e:
+						case <-ctx.Done():
+							return ctx.Err()
+						}
 					}
 				}
 				return nil
@@ -225,20 +231,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Conte
 			for _, ki := range keyItems[:numItems-1] {
 				e.P = append(e.P, string(ki))
 			}
-			if ee, ok := highPrioKVs[strings.Join(e.P, delimStr)]; ok {
-				if e.Priority < ee.Priority {
-					highPrioKVs[strings.Join(e.P, delimStr)] = e
-					continue
-				}
-				if e.Priority == ee.Priority {
-					if e.Timestamp > ee.Timestamp {
-						highPrioKVs[strings.Join(e.P, delimStr)] = e
-						continue
-					}
-				}
-				continue
-			}
-			highPrioKVs[strings.Join(e.P, delimStr)] = e
+			hpr.add(e)
 		}
 	}
 }
@@ -439,4 +432,39 @@ func hasOwner(k, owner []byte) bool {
 	// and the bytes right before the owner are the delimiter bytes
 	return bytes.HasSuffix(k[:lk-8], owner) &&
 		bytes.HasPrefix(k[lk-8-lo-1:], delimBytes)
+}
+
+type highPriorityReader struct {
+	highPrioEntries map[string][]*Entry
+	highestPriority int32
+}
+
+func (hpr *highPriorityReader) add(e *Entry) {
+	switch {
+	case hpr.highestPriority < 0:
+		// first entry to be added
+		hpr.highestPriority = e.Priority
+		p := strings.Join(e.P, delimStr)
+		hpr.highPrioEntries[p] = []*Entry{e}
+	case hpr.highestPriority < e.Priority:
+		return
+	case hpr.highestPriority > e.Priority:
+		// reset highest priority map entries
+		// this case should not happen since we read from
+		// the cache sequentially
+		clear(hpr.highPrioEntries)
+		// set new highest priority
+		hpr.highestPriority = e.Priority
+		// set the new first entry
+		hpr.highPrioEntries[strings.Join(e.P, delimStr)] = []*Entry{e}
+	case hpr.highestPriority == e.Priority:
+		//
+		p := strings.Join(e.P, delimStr)
+		//
+		if _, ok := hpr.highPrioEntries[p]; ok {
+			hpr.highPrioEntries[p] = append(hpr.highPrioEntries[p], e)
+			return
+		}
+		hpr.highPrioEntries[p] = []*Entry{e}
+	}
 }

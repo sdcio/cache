@@ -335,12 +335,13 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 				return nil
 			}
 			rsp := &cachepb.ReadResponse{
-				Name:     req.GetName(),
-				Path:     e.P,
-				Value:    &anypb.Any{Value: e.V},
-				Store:    req.Store,
-				Owner:    e.Owner,
-				Priority: e.Priority,
+				Name:      req.GetName(),
+				Path:      e.P,
+				Value:     &anypb.Any{Value: e.V},
+				Store:     req.Store,
+				Owner:     e.Owner,
+				Priority:  e.Priority,
+				Timestamp: int64(e.Timestamp),
 			}
 			err = stream.Send(rsp)
 			if err != nil {
