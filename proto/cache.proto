@@ -129,12 +129,13 @@ message ReadRequest{
     int32                   priority = 7;
 }
 message ReadResponse{
-    string                  name     = 2;
-    repeated string         path     = 3;
-    google.protobuf.Any     value    = 4;
-    Store                   store    = 5;
-    string                  owner    = 6;
-    int32                   priority = 7;
+    string                  name        = 2;
+    repeated string         path        = 3;
+    google.protobuf.Any     value       = 4;
+    Store                   store       = 5;
+    string                  owner       = 6;
+    int32                   priority    = 7;
+    int64                   timestamp   = 8;
 }
 //
 message DeleteValueRequest{
