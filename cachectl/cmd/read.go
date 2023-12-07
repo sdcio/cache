@@ -35,6 +35,7 @@ var readPath []string
 var storeName string
 var period time.Duration
 var format string
+var priorityCount uint64
 
 // readCmd represents the read command
 var readCmd = &cobra.Command{
@@ -71,9 +72,10 @@ var readCmd = &cobra.Command{
 		}
 		for rs := range c.Read(cmd.Context(), cacheName,
 			&client.ClientOpts{
-				Store:    store,
-				Owner:    owner,
-				Priority: priority,
+				Store:         store,
+				Owner:         owner,
+				Priority:      priority,
+				PriorityCount: priorityCount,
 			}, paths, period) {
 			switch format {
 			case "":
@@ -113,6 +115,7 @@ func init() {
 	readCmd.Flags().StringVarP(&format, "format", "", "", "print format, '', 'flat' or 'json'")
 	readCmd.Flags().StringVarP(&owner, "owner", "", "", "value owner for an intended store")
 	readCmd.Flags().Int32VarP(&priority, "priority", "", 0, "owner priority for an intended store")
+	readCmd.Flags().Uint64VarP(&priorityCount, "priority-count", "", 1, "number of highest priorities to retrieve when priority is 0")
 }
 
 // TODO: finish all types

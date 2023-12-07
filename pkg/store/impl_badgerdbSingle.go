@@ -266,6 +266,7 @@ func (s *badgerSingleDBStore) GetAll(ctx context.Context, name, bucket string, f
 			fk := buildFullKey(bucket, index, nil)
 			stream := s.db.NewStream()
 			stream.Prefix = fk
+			// TODO: revisit with selectFn
 			// stream.ChooseKey = func(item *badger.Item) bool {
 			// 	return bytes.HasPrefix(item.Key(), fk)
 			// }
