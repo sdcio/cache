@@ -88,10 +88,11 @@ type CandidateDetails struct {
 }
 
 type Opts struct {
-	Store    Store
-	Path     []string
-	Owner    string
-	Priority int32
+	Store         Store
+	Path          []string
+	Owner         string
+	Priority      int32
+	MaxPriorities uint64
 }
 
 type StatsResponse struct {

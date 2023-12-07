@@ -416,56 +416,6 @@ func (s *badgerDBStore) GetN(ctx context.Context, name, bucket string, n uint64,
 	return rkvs, nil
 }
 
-func (s *badgerDBStore) GetPrefixN(ctx context.Context, name, bucket string, prefix []byte, n uint64, fn ...SelectFn) ([]*KV, error) {
-	s.m.RLock()
-	defer s.m.RUnlock()
-
-	db, ok := s.dbs[name]
-	if !ok {
-		return nil, fmt.Errorf("unknown cache name %s", name)
-	}
-	rkvs := make([]*KV, 0, n)
-	count := uint64(0)
-	err := db.db.View(func(tx *badger.Txn) error {
-		for _, pr := range getPrefixes(bucket, prefix) {
-			it := tx.NewIterator(badger.DefaultIteratorOptions)
-			defer it.Close()
-			prefixLen := len(pr)
-		OUTER:
-			for it.Seek(pr); it.ValidForPrefix(pr); it.Next() {
-				item := it.Item()
-				k := item.KeyCopy(nil)
-				if len(k) > prefixLen &&
-					!bytes.HasPrefix(k[prefixLen:], sepBytes) {
-					continue
-				}
-				for _, sfn := range fn {
-					if !sfn(k[1:]) {
-						continue OUTER
-					}
-				}
-				v, err := item.ValueCopy(nil)
-				if err != nil {
-					return err
-				}
-				count++
-				rkvs = append(rkvs, &KV{
-					K: k[1:],
-					V: v,
-				})
-				if count == n { // done
-					return nil
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to read values based on prefix from cache %s: %v", name, err)
-	}
-	return rkvs, nil
-}
-
 func (s *badgerDBStore) GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte, fn ...SelectFn) (chan *KV, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
@@ -630,61 +580,6 @@ func (*badgerDBStore) openDB(ctx context.Context, name string) (*badger.DB, erro
 	}()
 	return bdb, nil
 }
-
-// badgerGetAllFn builds a function that can be passed to db.View()
-// it reads all the KV from an index and writes the KV pair to the channel KvCh
-// func badgerGetAllFn(ctx context.Context, indexName, bucket string, kvCh chan *KV) func(tx *badger.Txn) error {
-// 	return func(tx *badger.Txn) error {
-// 		it := tx.NewIterator(badger.DefaultIteratorOptions)
-// 		defer it.Close()
-// 		var k = make([]byte, 1)
-// 		switch bucket {
-// 		case "config":
-// 			k[0] = configPrefix
-// 		case "state":
-// 			k[0] = statePrefix
-// 		default:
-// 			// get both config and state
-// 			// iterate over keys
-// 			for it.Rewind(); it.Valid(); it.Next() {
-// 				select {
-// 				case <-ctx.Done():
-// 					return ctx.Err()
-// 				default:
-// 					item := it.Item()
-// 					key := item.Key()
-// 					if key[0] == 0 {
-// 						continue // skip cache config
-// 					}
-// 					err := item.Value(func(v []byte) error {
-// 						kvToChan(ctx, key[1:], v, kvCh)
-// 						return nil
-// 					})
-// 					if err != nil {
-// 						return err
-// 					}
-// 				}
-// 			}
-// 			return nil
-// 		}
-// 		// prefix scan
-// 		for it.Seek(k); it.ValidForPrefix(k); it.Next() {
-// 			item := it.Item()
-// 			k := item.Key()
-// 			if k[0] == 0 {
-// 				continue // skip cache config
-// 			}
-// 			err := item.Value(func(v []byte) error {
-// 				kvToChan(ctx, k[1:], v, kvCh)
-// 				return nil
-// 			})
-// 			if err != nil {
-// 				return err
-// 			}
-// 		}
-// 		return nil
-// 	}
-// }
 
 // getPrefixFn
 func getPrefixFn(ctx context.Context, indexName, bucket string, prefix, pattern []byte, kvCh chan *KV, fn ...SelectFn) func(tx *badger.Txn) error {

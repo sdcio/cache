@@ -121,12 +121,24 @@ message WriteValueResponse{
 }
 //
 message ReadRequest{
-    string                  name     = 2;
-    repeated string         path     = 3;
-    Store                   store    = 4;
-    uint64                  period   = 5;
-    string                  owner    = 6;
-    int32                   priority = 7;
+    // cache instance name
+    string                  name            = 2;
+    // path
+    repeated string         path            = 3;
+    // store type: config, state, intended, metadata
+    Store                   store           = 4;
+    // read period in nano seconds, if > 0
+    // this read becomes a sample subscription
+    uint64                  period          = 5;
+    // read a specific owner
+    string                  owner           = 6;
+    // read a specific priority.
+    // if 0: read the highest.
+    // if < 0: read all priorities.
+    int32                   priority        = 7;
+    // in case priority == 0; this specifies how 
+    // many "highest" priorities we want to read.
+    uint64                  priority_count  = 8;
 }
 message ReadResponse{
     string                  name        = 2;

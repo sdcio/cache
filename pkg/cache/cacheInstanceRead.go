@@ -65,7 +65,7 @@ func (ci *cacheInstance) readValueCh(ctx context.Context, cname string, ro *Opts
 			err = ci.readPrefixFromStateStoreCh(ctx, []byte(prefix), []byte(pattern), rsCh)
 		case StoreIntended:
 			bucket = intendedBucketName
-			err = ci.readPrefixFromIntendedStoreCh(ctx, ro.Priority, ro.Owner, []byte(prefix), rsCh)
+			err = ci.readPrefixFromIntendedStoreCh(ctx, ro.Priority, ro.Owner, ro.MaxPriorities, []byte(prefix), rsCh)
 		case StoreMetadata:
 			bucket = intendedBucketName
 			err = ci.readFromMetadataStoreCh(ctx, []byte(prefix), rsCh)
@@ -151,89 +151,111 @@ func (ci *cacheInstance) readPrefixFromStateStoreCh(ctx context.Context, prefix,
 	}
 }
 
-func (ci *cacheInstance) readPrefixFromIntendedStoreCh(ctx context.Context, priority int32, owner string, prefix []byte, kvCh chan *Entry) error {
+func (ci *cacheInstance) readPrefixFromIntendedStoreCh(ctx context.Context, priority int32, owner string, mp uint64, prefix []byte, kvCh chan *Entry) error {
 	switch {
 	case priority < 0:
 		return ci.readPrefixFromIntendedStoreAnyPrioCh(ctx, prefix, []byte(owner), kvCh)
 	case priority == 0:
-		return ci.readPrefixFromIntendedStoreHighPrioCh(ctx, prefix, []byte(owner), kvCh)
+		return ci.readPrefixFromIntendedStoreHighPrioCh(ctx, prefix, []byte(owner), mp, kvCh)
 	default: // specific priority
 		return ci.readPrefixFromIntendedStoreSpecificPrioCh(ctx, priority, prefix, []byte(owner), kvCh)
 	}
 }
 
-func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Context, prefix, owner []byte, kvCh chan *Entry) error {
+func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Context, prefix, owner []byte, priorityCount uint64, kvCh chan *Entry) error {
 	var bucket = "intended"
 	withOwner := len(owner) > 0
-	vCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket,
-		func(k []byte) bool {
-			lk := len(k)
-			// must include priority and TS
-			if lk < 4+8 {
-				return false
-			}
-			// check for prefix
-			if !bytes.HasPrefix(k[4:lk-8], prefix) {
-				return false
-			}
-			// check for prefix
-			if !withOwner {
-				return true
-			}
-			// check for owner and prefix
-			return hasOwner(k, owner)
+	if priorityCount == 0 {
+		priorityCount = 1
+	}
+	pp := int32(0)
 
-		})
-	if err != nil {
-		return err
-	}
-	// this struct keeps track of the highest priority entries
-	// per path.
-	hpr := &highPriorityReader{
-		highPrioEntries: map[string][]*Entry{},
-		highestPriority: -1,
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case v, ok := <-vCh:
-			if !ok {
-				for _, es := range hpr.highPrioEntries {
-					for _, e := range es {
-						select {
-						case kvCh <- e:
-						case <-ctx.Done():
-							return ctx.Err()
+	for iter := uint64(0); iter < priorityCount; iter++ {
+		vCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket,
+			ignorePriorityHigherThanFn(pp),
+			func(k []byte) bool {
+				lk := len(k)
+				// must include priority and TS
+				if lk < 4+8 {
+					return false
+				}
+				// check for prefix
+				if !bytes.HasPrefix(k[4:lk-8], prefix) {
+					return false
+				}
+				// check for owner
+				if withOwner && !hasOwnerFn(k, owner) {
+					return false
+				}
+				return true
+			})
+		if err != nil {
+			return err
+		}
+		// this struct keeps track of the highest priority entries
+		// per path.
+		hpr := &highPriorityReader{
+			highPrioEntries: map[string][]*Entry{},
+			highestPriority: -1,
+		}
+	FOR:
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case v, ok := <-vCh:
+				if !ok {
+					log.Debugf("current min priority %d", pp)
+					log.Debugf("done with HPR %d", hpr.highestPriority)
+					// found nothing
+					if hpr.highestPriority < 0 {
+						log.Debug("found nothing, stop iterations")
+						return nil
+					}
+					// got the same priority as the previous iteration
+					if pp == hpr.highestPriority {
+						log.Debug("found the same priority as the previous iteration, stop iterations")
+						return nil
+					}
+					for _, es := range hpr.highPrioEntries {
+						for _, e := range es {
+							log.Debugf("read entry: %s", e)
+							select {
+							case kvCh <- e:
+							case <-ctx.Done():
+								return ctx.Err()
+							}
 						}
 					}
+					pp = hpr.highestPriority
+					break FOR
 				}
-				return nil
-			}
-			// extract entry attrs
-			lkey := len(v.K)
-			if lkey < 4+8 {
-				return fmt.Errorf("key too short(<12): %x", v.K)
-			}
-			ts := v.K[lkey-8:]
+				// extract entry attrs
+				lkey := len(v.K)
+				if lkey < 4+8 {
+					return fmt.Errorf("key too short(<12): %x", v.K)
+				}
+				ts := v.K[lkey-8:]
 
-			keyItems := bytes.Split(v.K[4:lkey-8], delimBytes)
-			numItems := len(keyItems)
+				keyItems := bytes.Split(v.K[4:lkey-8], delimBytes)
+				numItems := len(keyItems)
 
-			e := &Entry{
-				Timestamp: binary.BigEndian.Uint64(ts),
-				Owner:     string(keyItems[numItems-1]),
-				Priority:  int32(binary.BigEndian.Uint32(v.K[:4])),
-				P:         make([]string, 0, numItems-1),
-				V:         v.V,
-			}
+				e := &Entry{
+					Timestamp: binary.BigEndian.Uint64(ts),
+					Owner:     string(keyItems[numItems-1]),
+					Priority:  int32(binary.BigEndian.Uint32(v.K[:4])),
+					P:         make([]string, 0, numItems-1),
+					V:         v.V,
+				}
 
-			for _, ki := range keyItems[:numItems-1] {
-				e.P = append(e.P, string(ki))
+				for _, ki := range keyItems[:numItems-1] {
+					e.P = append(e.P, string(ki))
+				}
+				hpr.add(e)
 			}
-			hpr.add(e)
 		}
 	}
+	return nil
 }
 
 func (ci *cacheInstance) readPrefixFromIntendedStoreAnyPrioCh(ctx context.Context, prefix, owner []byte, kvCh chan *Entry) error {
@@ -259,7 +281,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreAnyPrioCh(ctx context.Contex
 				return true
 			}
 			return lk > prefixLen && // key is longer than the prefix.
-				hasOwner(k, owner)
+				hasOwnerFn(k, owner)
 
 		})
 	if err != nil {
@@ -274,7 +296,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreAnyPrioCh(ctx context.Contex
 			if !ok {
 				return nil
 			}
-			log.Debugf("reading prio=%x path=%s ts=%x\n", v.K[:4], string(v.K[4:len(v.K)-8]), v.K[len(v.K)-8:])
+			log.Debugf("reading prio=%x path=%s ts=%x", v.K[:4], string(v.K[4:len(v.K)-8]), v.K[len(v.K)-8:])
 			e, err := kvToEntry(v, bucket)
 			if err != nil {
 				return err
@@ -305,7 +327,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreSpecificPrioCh(ctx context.C
 			if !withOwner {
 				return true
 			}
-			return hasOwner(k, owner)
+			return hasOwnerFn(k, owner)
 		})
 	if err != nil {
 		return err
@@ -425,13 +447,21 @@ func kvToEntry(v *store.KV, bucket string) (*Entry, error) {
 	return nil, fmt.Errorf("unknown bucket name %q", bucket)
 }
 
-func hasOwner(k, owner []byte) bool {
+func hasOwnerFn(k, owner []byte) bool {
 	lk := len(k)
 	lo := len(owner)
 	// the key ends with the owner bytes and 8 bytes for a timestamp.
 	// and the bytes right before the owner are the delimiter bytes
 	return bytes.HasSuffix(k[:lk-8], owner) &&
 		bytes.HasPrefix(k[lk-8-lo-1:], delimBytes)
+}
+
+// used to ignore priorities higher than
+func ignorePriorityHigherThanFn(p int32) store.SelectFn {
+	return func(k []byte) bool {
+		kp := binary.BigEndian.Uint32(k[:4])
+		return int32(kp) > p
+	}
 }
 
 type highPriorityReader struct {

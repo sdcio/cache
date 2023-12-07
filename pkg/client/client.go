@@ -42,9 +42,10 @@ type ClientConfig struct {
 }
 
 type ClientOpts struct {
-	Store    cache.Store
-	Owner    string
-	Priority int32
+	Store         cache.Store
+	Owner         string
+	Priority      int32
+	PriorityCount uint64
 }
 
 func New(ctx context.Context, ccfg *ClientConfig) (*Client, error) {
@@ -258,12 +259,13 @@ func (c *Client) Read(ctx context.Context, name string, ro *ClientOpts, paths []
 				}
 				defer sem.Release(1)
 				req := &cachepb.ReadRequest{
-					Name:     name,
-					Path:     p,
-					Store:    cStore,
-					Period:   uint64(period),
-					Owner:    ro.Owner,
-					Priority: ro.Priority,
+					Name:          name,
+					Path:          p,
+					Store:         cStore,
+					Period:        uint64(period),
+					Owner:         ro.Owner,
+					Priority:      ro.Priority,
+					PriorityCount: ro.PriorityCount,
 				}
 				stream, err := c.client.Read(ctx, req, opts...)
 				if err != nil {
