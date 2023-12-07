@@ -1,3 +1,4 @@
+#
 ## get N highest priorities for a given path
 
 ```shell
@@ -18,9 +19,12 @@ bin/cachectl read -n target1 -p a,b,c1 -s intended --format flat --priority-coun
 bin/cachectl read -n target1 -p a,b,c1 -s intended --format flat --priority-count 3
 bin/cachectl read -n target1 -p a,b,c1 -s intended --format flat --priority-count 4
 bin/cachectl read -n target1 -p a,b,c1 -s intended --format flat --priority-count 5
+bin/cachectl read -n target1 -p a,b,c1 -s intended --format flat --priority-count 100000
+
 # get multiple paths
 bin/cachectl read -n target1 -p a,b -s intended --format flat --priority-count 2
 bin/cachectl read -n target1 -p a,b -s intended --format flat --priority-count 3
 bin/cachectl read -n target1 -p a,b -s intended --format flat --priority-count 4
 bin/cachectl read -n target1 -p a,b -s intended --format flat --priority-count 5
+bin/cachectl read -n target1 -p a,b -s intended --format flat --priority-count 100000
 ```
