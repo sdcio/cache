@@ -92,7 +92,7 @@ type Opts struct {
 	Path          []string
 	Owner         string
 	Priority      int32
-	MaxPriorities uint64
+	PriorityCount uint64
 }
 
 type StatsResponse struct {

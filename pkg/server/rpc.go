@@ -307,7 +307,7 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 			Path:          req.GetPath(),
 			Owner:         req.GetOwner(),
 			Priority:      req.GetPriority(),
-			MaxPriorities: req.GetPriorityCount(),
+			PriorityCount: req.GetPriorityCount(),
 		})
 		if err != nil {
 			return err

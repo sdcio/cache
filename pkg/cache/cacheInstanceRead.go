@@ -65,7 +65,7 @@ func (ci *cacheInstance) readValueCh(ctx context.Context, cname string, ro *Opts
 			err = ci.readPrefixFromStateStoreCh(ctx, []byte(prefix), []byte(pattern), rsCh)
 		case StoreIntended:
 			bucket = intendedBucketName
-			err = ci.readPrefixFromIntendedStoreCh(ctx, ro.Priority, ro.Owner, ro.MaxPriorities, []byte(prefix), rsCh)
+			err = ci.readPrefixFromIntendedStoreCh(ctx, ro.Priority, ro.Owner, ro.PriorityCount, []byte(prefix), rsCh)
 		case StoreMetadata:
 			bucket = intendedBucketName
 			err = ci.readFromMetadataStoreCh(ctx, []byte(prefix), rsCh)
