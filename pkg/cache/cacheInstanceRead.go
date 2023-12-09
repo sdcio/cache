@@ -46,7 +46,11 @@ func (ci *cacheInstance) readValueCh(ctx context.Context, cname string, ro *Opts
 						P: path,
 						V: vt,
 					}
-					rsCh <- e
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case rsCh <- e:
+					}
 					pathsFoundInCandidate[strings.Join(path, delimStr)] = struct{}{}
 					return nil
 				})
