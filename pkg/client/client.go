@@ -381,3 +381,13 @@ func (c *Client) Watch(ctx context.Context, name string, store cache.Store, pref
 	}()
 	return rspCh, nil
 }
+
+func (c *Client) Prune(ctx context.Context, name string, id string, force bool, opts ...grpc.CallOption) (*cachepb.PruneResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
+	defer cancel()
+	return c.client.Prune(ctx, &cachepb.PruneRequest{
+		Name:  name,
+		Id:    id,
+		Force: force,
+	}, opts...)
+}

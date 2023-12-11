@@ -143,7 +143,7 @@ func Test_badgerDBStore_WriteValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := s.WriteValue(tt.args.ctx, tt.args.name, tt.args.bucket, tt.args.k, tt.args.v); (err != nil) != tt.wantErr {
+			if err := s.WriteValue(tt.args.ctx, tt.args.name, tt.args.bucket, tt.args.k, tt.args.v, 0); (err != nil) != tt.wantErr {
 				t.Errorf("badgerDBStore.WriteValue() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			rv, err := s.GetValue(tt.args.ctx, tt.args.name, tt.args.bucket, tt.args.k)

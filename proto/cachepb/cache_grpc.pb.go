@@ -38,6 +38,8 @@ type CacheClient interface {
 	Clone(ctx context.Context, in *CloneRequest, opts ...grpc.CallOption) (*CloneResponse, error)
 	// modify a cache instance
 	Modify(ctx context.Context, opts ...grpc.CallOption) (Cache_ModifyClient, error)
+	// prune deletes
+	Prune(ctx context.Context, in *PruneRequest, opts ...grpc.CallOption) (*PruneResponse, error)
 	// Read value(s) from a cache instance
 	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (Cache_ReadClient, error)
 	// GetChanges made to a candidate
@@ -157,6 +159,15 @@ func (x *cacheModifyClient) CloseAndRecv() (*ModifyResponse, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (c *cacheClient) Prune(ctx context.Context, in *PruneRequest, opts ...grpc.CallOption) (*PruneResponse, error) {
+	out := new(PruneResponse)
+	err := c.cc.Invoke(ctx, "/cache.proto.Cache/Prune", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *cacheClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (Cache_ReadClient, error) {
@@ -311,6 +322,8 @@ type CacheServer interface {
 	Clone(context.Context, *CloneRequest) (*CloneResponse, error)
 	// modify a cache instance
 	Modify(Cache_ModifyServer) error
+	// prune deletes
+	Prune(context.Context, *PruneRequest) (*PruneResponse, error)
 	// Read value(s) from a cache instance
 	Read(*ReadRequest, Cache_ReadServer) error
 	// GetChanges made to a candidate
@@ -355,6 +368,9 @@ func (UnimplementedCacheServer) Clone(context.Context, *CloneRequest) (*CloneRes
 }
 func (UnimplementedCacheServer) Modify(Cache_ModifyServer) error {
 	return status.Errorf(codes.Unimplemented, "method Modify not implemented")
+}
+func (UnimplementedCacheServer) Prune(context.Context, *PruneRequest) (*PruneResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Prune not implemented")
 }
 func (UnimplementedCacheServer) Read(*ReadRequest, Cache_ReadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Read not implemented")
@@ -542,6 +558,24 @@ func (x *cacheModifyServer) Recv() (*ModifyRequest, error) {
 	return m, nil
 }
 
+func _Cache_Prune_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PruneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CacheServer).Prune(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cache.proto.Cache/Prune",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CacheServer).Prune(ctx, req.(*PruneRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Cache_Read_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ReadRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -711,6 +745,10 @@ var Cache_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Clone",
 			Handler:    _Cache_Clone_Handler,
+		},
+		{
+			MethodName: "Prune",
+			Handler:    _Cache_Prune_Handler,
 		},
 		{
 			MethodName: "Discard",

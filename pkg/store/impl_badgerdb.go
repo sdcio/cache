@@ -132,7 +132,7 @@ func (s *badgerDBStore) Clone(ctx context.Context, name, cname string) error {
 			if !ok {
 				return nil
 			}
-			err = s.WriteValue(ctx, cname, "", v.K, v.V)
+			err = s.WriteValue(ctx, cname, "", v.K, v.V, 0)
 			if err != nil {
 				return err
 			}
@@ -186,7 +186,7 @@ func (s *badgerDBStore) LoadCache(ctx context.Context, name string) error {
 	return nil
 }
 
-func (s *badgerDBStore) WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte) error {
+func (s *badgerDBStore) WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte, m byte) error {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -548,6 +548,17 @@ func (s *badgerDBStore) Clear(ctx context.Context, name string) error {
 		return fmt.Errorf("unknown cache name %s", name)
 	}
 	return db.db.DropAll()
+}
+
+func (s *badgerDBStore) Prune(ctx context.Context, name, bucket string, b byte) error {
+	return errors.New("not implemented")
+}
+
+func (s *badgerDBStore) SetPruneIndex(ctx context.Context, name string, idx uint8) error {
+	return errors.New("not implemented")
+}
+func (s *badgerDBStore) GetPruneIndex(ctx context.Context, name string) (uint8, error) {
+	return 0, errors.New("not implemented")
 }
 
 func (*badgerDBStore) openDB(ctx context.Context, name string) (*badger.DB, error) {

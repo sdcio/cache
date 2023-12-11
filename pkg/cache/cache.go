@@ -44,6 +44,12 @@ type Cache interface {
 
 	// WriteValue writes a bytes value into the named cache
 	WriteValue(ctx context.Context, name string, wo *Opts, vb []byte) error
+	// CreatePruneID creates a pruneID that can be used to trigger a prune
+	// with ApplyPrune once all updates are pushed
+	CreatePruneID(ctx context.Context, name string, force bool) (string, error)
+	// ApplyPrune runs a prune on the config and state stores of the cache instance.
+	// It deletes all values that where not updated since the pruneID was generated.
+	ApplyPrune(ctx context.Context, name, id string) error
 	// ReadValue reads a value from a cache instance.
 	ReadValue(ctx context.Context, name string, ro *Opts) (chan *Entry, error)
 	// ReadValuePeriodic reads a value from a cache instance every period

@@ -87,7 +87,8 @@ func (s *Server) Create(ctx context.Context, req *cachepb.CreateRequest) (*cache
 		StoreType: s.cfg.Cache.StoreType,
 		// Ephemeral: req.GetEphemeral(),
 		// Cached:    req.GetCached(),
-		Dir: s.cfg.Cache.Dir,
+		Dir:             s.cfg.Cache.Dir,
+		PruneIDLifetime: s.cfg.Cache.PruneIDLifetime,
 	}
 	log.Debugf("creating a cache with config %+v", cfg)
 	err := s.cache.Create(ctx, cfg)
