@@ -21,8 +21,6 @@ import (
 
 const (
 	dbName = "cached"
-	// metaSinglePrefix = uint8(0)
-	//cachesSinglePrefix = uint8(1)
 )
 
 type badgerSingleDBStore struct {
@@ -106,7 +104,7 @@ func (s *badgerSingleDBStore) CreateCache(ctx context.Context, name string) erro
 	// find next free index
 	index := s.nextAvailableKey()
 	// write index/name
-	err := s.writeCacheIndex(ctx, index, name)
+	err := s.writeCacheIndex(ctx, index, name, 0)
 	if err != nil {
 		return err
 	}
@@ -171,7 +169,7 @@ func (s *badgerSingleDBStore) Clone(ctx context.Context, name, cname string) err
 	return nil
 }
 
-func (s *badgerSingleDBStore) WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte) error {
+func (s *badgerSingleDBStore) WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte, m byte) error {
 	if bucket == "" {
 		return errors.New("a bucket name must be specified")
 	}
@@ -182,7 +180,9 @@ func (s *badgerSingleDBStore) WriteValue(ctx context.Context, name, bucket strin
 	if index, ok := s.cacheIndexes[name]; ok {
 		fk := buildFullKey(bucket, index, k)
 		return s.db.Update(func(txn *badger.Txn) error {
-			return txn.Set(fk, v)
+			e := badger.NewEntry(fk, v).WithMeta(m)
+			log.Debugf("writing kv %x | %x | %s with meta %x", fk[0], fk[1:3], fk[3:], m)
+			return txn.SetEntry(e)
 		})
 	}
 
@@ -202,7 +202,7 @@ func (s *badgerSingleDBStore) GetValue(ctx context.Context, name, bucket string,
 		err := s.db.View(func(txn *badger.Txn) error {
 			item, err := txn.Get(fk)
 			if err != nil {
-				// map not found error
+				// key not found error
 				if errors.Is(err, badger.ErrKeyNotFound) {
 					return ErrKeyNotFound
 				}
@@ -227,7 +227,6 @@ func (s *badgerSingleDBStore) DeleteValue(ctx context.Context, name, bucket stri
 
 	if index, ok := s.cacheIndexes[name]; ok {
 		fk := buildFullKey(bucket, index, k)
-		fmt.Printf("deleting %x | %x | %s\n", fk[0], fk[1:3], fk[3:])
 		return s.db.Update(func(txn *badger.Txn) error {
 			return txn.Delete(fk)
 		})
@@ -527,6 +526,104 @@ func (s *badgerSingleDBStore) Clear(ctx context.Context, name string) error {
 	return s.clear(ctx, name)
 }
 
+func (s *badgerSingleDBStore) Prune(ctx context.Context, name, bucket string, pruneIndex uint8) error {
+	if bucket == "" {
+		return errors.New("a bucket name must be specified")
+	}
+
+	s.m.RLock()
+	defer s.m.RUnlock()
+
+	if index, ok := s.cacheIndexes[name]; ok {
+		return s.db.Update(
+			func(txn *badger.Txn) error {
+				fk := buildFullKey(bucket, index, nil)
+				opts := badger.DefaultIteratorOptions
+				opts.PrefetchValues = false
+				it := txn.NewIterator(opts)
+				defer it.Close()
+
+				keysToDelete := make([][]byte, 0, deletePrefixBatchSize)
+
+				for it.Seek(fk); it.ValidForPrefix(fk); it.Next() {
+					item := it.Item()
+					if item.UserMeta() == pruneIndex {
+						continue
+					}
+					//fmt.Printf("meta=%d, %d | %x | %x | %s DELETING\n", item.UserMeta(), meta, fkey[0], fkey[1:3], fkey[3:])
+					key := item.KeyCopy(nil)
+					keysToDelete = append(keysToDelete, key)
+					if len(keysToDelete) >= deletePrefixBatchSize {
+						err := s.deleteKeys(keysToDelete)
+						if err != nil {
+							return err
+						}
+						keysToDelete = make([][]byte, 0)
+					}
+				}
+				err := s.deleteKeys(keysToDelete)
+				if err != nil {
+					return err
+				}
+				return nil
+			},
+		)
+	}
+
+	return fmt.Errorf("cache %q does not exist", name)
+}
+
+func (s *badgerSingleDBStore) SetPruneIndex(ctx context.Context, name string, pruneIndex uint8) error {
+	s.m.RLock()
+	defer s.m.RUnlock()
+
+	if index, ok := s.cacheIndexes[name]; ok {
+		return s.db.Update(func(txn *badger.Txn) error {
+			mk := make([]byte, 0, 3)
+			mk = append(mk, metaPrefix)
+			mk = append(mk, cacheIndexKey(index)...)
+			bn := []byte(name)
+			mk = append(mk, bn...)
+			return txn.Set(mk, []byte{pruneIndex})
+		})
+	}
+	return nil
+}
+
+func (s *badgerSingleDBStore) GetPruneIndex(ctx context.Context, name string) (uint8, error) {
+	s.m.RLock()
+	defer s.m.RUnlock()
+
+	if index, ok := s.cacheIndexes[name]; ok {
+		var pidx uint8
+		err := s.db.View(func(txn *badger.Txn) error {
+			mk := make([]byte, 0, 3)
+			mk = append(mk, metaPrefix)
+			mk = append(mk, cacheIndexKey(index)...)
+			bn := []byte(name)
+			mk = append(mk, bn...)
+			item, err := txn.Get(mk)
+			if err != nil {
+				return err
+			}
+			if item.ValueSize() != 1 {
+				return fmt.Errorf("incorrect pruneIndex value for cache %s", name)
+			}
+			bv, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			pidx = bv[0]
+			return nil
+		})
+		if err != nil {
+			return 0, err
+		}
+		return pidx, nil
+	}
+	return 0, fmt.Errorf("unknown cache name %s", name)
+}
+
 // helpers
 
 func (s *badgerSingleDBStore) openDB(ctx context.Context) (*badger.DB, error) {
@@ -697,13 +794,13 @@ func (s *badgerSingleDBStore) deleteCacheIndex(ctx context.Context, index uint16
 	})
 }
 
-func (s *badgerSingleDBStore) writeCacheIndex(ctx context.Context, index uint16, name string) error {
+func (s *badgerSingleDBStore) writeCacheIndex(ctx context.Context, index uint16, name string, pruneIndex uint8) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		mk := make([]byte, 0, 3)
 		mk = append(mk, metaPrefix)
 		mk = append(mk, cacheIndexKey(index)...)
 		bn := []byte(name)
 		mk = append(mk, bn...)
-		return txn.Set(mk, bn)
+		return txn.Set(mk, []byte{pruneIndex})
 	})
 }

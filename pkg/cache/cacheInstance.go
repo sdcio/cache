@@ -35,7 +35,12 @@ type cacheInstance struct {
 
 	m          *sync.RWMutex
 	candidates map[string]*candidate
-	store      store.Store
+	// pruneID to pruneIndex
+	pm         *sync.RWMutex
+	pruneID    string
+	pruneIndex byte
+
+	store store.Store
 }
 
 type CacheInstanceConfig struct {
@@ -58,6 +63,7 @@ func newCacheInstance(cfg *CacheInstanceConfig, storage store.Store) *cacheInsta
 		cfg:        cfg,
 		m:          new(sync.RWMutex),
 		candidates: make(map[string]*candidate),
+		pm:         new(sync.RWMutex),
 		store:      storage,
 	}
 }

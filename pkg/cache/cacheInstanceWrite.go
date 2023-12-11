@@ -30,7 +30,9 @@ func (ci *cacheInstance) writeValueConfig(ctx context.Context, cname string, wo 
 	if cname == "" {
 		k := []byte(strings.Join(wo.Path, delimStr))
 		log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, configBucketName, k, v)
-		return ci.store.WriteValue(ctx, ci.cfg.Name, configBucketName, k, v)
+		ci.pm.RLock()
+		defer ci.pm.RUnlock()
+		return ci.store.WriteValue(ctx, ci.cfg.Name, configBucketName, k, v, ci.pruneIndex)
 	}
 	// write to candidate
 	return ci.writeValueConfigCandidate(ctx, cname, wo, v)
@@ -39,7 +41,9 @@ func (ci *cacheInstance) writeValueConfig(ctx context.Context, cname string, wo 
 func (ci *cacheInstance) writeValueState(ctx context.Context, wo *Opts, v []byte) error {
 	k := []byte(strings.Join(wo.Path, delimStr))
 	log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, stateBucketName, k, v)
-	return ci.store.WriteValue(ctx, ci.cfg.Name, stateBucketName, k, v)
+	ci.pm.RLock()
+	defer ci.pm.RUnlock()
+	return ci.store.WriteValue(ctx, ci.cfg.Name, stateBucketName, k, v, ci.pruneIndex)
 }
 
 func (ci *cacheInstance) writeValueIntended(ctx context.Context, wo *Opts, v []byte) error {
@@ -86,7 +90,7 @@ CH_LOOP:
 	binary.BigEndian.PutUint64(ts, uint64(now))
 	k = append(k, ts...)
 	log.Debugf("writing to %q: bucket=%s, k=%x, v=%v", ci.cfg.Name, intendedBucketName, k, v)
-	err = ci.store.WriteValue(ctx, ci.cfg.Name, intendedBucketName, k, v)
+	err = ci.store.WriteValue(ctx, ci.cfg.Name, intendedBucketName, k, v, 0)
 	if err != nil {
 		return err
 	}
@@ -103,7 +107,7 @@ CH_LOOP:
 func (ci *cacheInstance) writeValueMetadata(ctx context.Context, wo *Opts, v []byte) error {
 	k := []byte(strings.Join(wo.Path, delimStr))
 	log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, metadataBucketName, k, v)
-	return ci.store.WriteValue(ctx, ci.cfg.Name, metadataBucketName, k, v)
+	return ci.store.WriteValue(ctx, ci.cfg.Name, metadataBucketName, k, v, 0)
 }
 
 func (ci *cacheInstance) writeValueConfigCandidate(ctx context.Context, cname string, wo *Opts, v []byte) error {

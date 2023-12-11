@@ -11,25 +11,27 @@ type Store interface {
 	CreateCache(ctx context.Context, name string) error
 	ListCaches(ctx context.Context) ([]string, error)
 	DeleteCache(ctx context.Context, name string) error
+	SetPruneIndex(ctx context.Context, name string, idx uint8) error
+	GetPruneIndex(ctx context.Context, name string) (uint8, error)
 
 	Clone(ctx context.Context, name, cname string) error
 
-	WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte) error
-
+	WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte, m byte) error
 	DeleteValue(ctx context.Context, name, bucket string, k []byte) error
 	DeletePrefix(ctx context.Context, name, bucket string, k []byte, fn ...SelectFn) error
+
+	Prune(ctx context.Context, name, bucket string, pruneIndx uint8) error
 
 	GetValue(ctx context.Context, name, bucket string, k []byte) ([]byte, error)
 	GetAll(ctx context.Context, name, bucket string, fn ...SelectFn) (chan *KV, error)
 	GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte, fn ...SelectFn) (chan *KV, error)
-
 	GetN(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error)
-
 	Txn(ctx context.Context, name, bucket string, txnOpts *TxnOpts) error
 	Watch(ctx context.Context, name, bucket string, prefixes [][]byte) (chan *KV, error)
 	Close() error
-	Stats(ctx context.Context, name string) (*StoreStats, error)
 	Clear(ctx context.Context, name string) error
+
+	Stats(ctx context.Context, name string) (*StoreStats, error)
 }
 
 type SelectFn func(k []byte) bool

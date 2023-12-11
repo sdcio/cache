@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
 	"github.com/spf13/viper"
 )
 
@@ -32,7 +31,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVarP(&address, "address", "a", "localhost:50100", "cache server address")
-	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 5*time.Second, "RPCs timeout")
+	rootCmd.PersistentFlags().DurationVarP(&timeout, "timeout", "t", 30*time.Second, "RPCs timeout")
 }
 
 // initConfig reads in config file and ENV variables if set.

@@ -23,6 +23,8 @@ service Cache {
     rpc Clone(CloneRequest)                     returns (CloneResponse);
     // modify a cache instance
     rpc Modify(stream ModifyRequest)            returns (ModifyResponse);
+    // prune deletes 
+    rpc Prune(PruneRequest)                     returns (PruneResponse);
     // Read value(s) from a cache instance
     rpc Read(ReadRequest)                       returns (stream ReadResponse);
     // GetChanges made to a candidate
@@ -118,6 +120,14 @@ message WriteValueResponse{
     repeated string path  = 2;
     string          error = 3;
     Store           store = 4;
+}
+//
+message PruneRequest{
+    string name = 1;
+    string id   = 2;
+}
+message PruneResponse{
+    string id = 1;
 }
 //
 message ReadRequest{
