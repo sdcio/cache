@@ -15,7 +15,7 @@ func (s *Server) Prune(ctx context.Context, req *cachepb.PruneRequest) (*cachepb
 	}
 	switch req.GetId() {
 	case "": // create pruneID
-		id, err := s.cache.CreatePruneID(ctx, req.GetName())
+		id, err := s.cache.CreatePruneID(ctx, req.GetName(), req.GetForce())
 		if err != nil {
 			return nil, err
 		}

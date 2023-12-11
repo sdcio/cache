@@ -25,6 +25,7 @@ import (
 )
 
 var pruneID string
+var force bool
 
 // pruneCmd represents the prune command
 var pruneCmd = &cobra.Command{
@@ -43,11 +44,13 @@ var pruneCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		rsp, err := c.Prune(cmd.Context(), cacheName, pruneID)
+		rsp, err := c.Prune(cmd.Context(), cacheName, pruneID, force)
 		if err != nil {
 			return err
 		}
-		fmt.Println(rsp.GetId())
+		if pruneID == "" {
+			fmt.Println(rsp.GetId())
+		}
 		return nil
 	},
 }
@@ -56,4 +59,5 @@ func init() {
 	rootCmd.AddCommand(pruneCmd)
 	pruneCmd.Flags().StringVarP(&cacheName, "name", "n", "", "cache name")
 	pruneCmd.Flags().StringVarP(&pruneID, "id", "", "", "prune ID")
+	pruneCmd.Flags().BoolVarP(&force, "force", "", false, "force prune ID creation")
 }

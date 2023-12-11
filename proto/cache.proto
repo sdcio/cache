@@ -123,8 +123,9 @@ message WriteValueResponse{
 }
 //
 message PruneRequest{
-    string name = 1;
-    string id   = 2;
+    string name  = 1;
+    string id    = 2;
+    bool   force = 3;
 }
 message PruneResponse{
     string id = 1;

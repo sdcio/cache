@@ -30,9 +30,9 @@ func (ci *cacheInstance) writeValueConfig(ctx context.Context, cname string, wo 
 	if cname == "" {
 		k := []byte(strings.Join(wo.Path, delimStr))
 		log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, configBucketName, k, v)
-		ci.pm.RLock()
-		defer ci.pm.RUnlock()
-		return ci.store.WriteValue(ctx, ci.cfg.Name, configBucketName, k, v, ci.pruneIndex)
+		ci.prune.pm.RLock()
+		defer ci.prune.pm.RUnlock()
+		return ci.store.WriteValue(ctx, ci.cfg.Name, configBucketName, k, v, ci.prune.pruneIndex)
 	}
 	// write to candidate
 	return ci.writeValueConfigCandidate(ctx, cname, wo, v)
@@ -41,9 +41,9 @@ func (ci *cacheInstance) writeValueConfig(ctx context.Context, cname string, wo 
 func (ci *cacheInstance) writeValueState(ctx context.Context, wo *Opts, v []byte) error {
 	k := []byte(strings.Join(wo.Path, delimStr))
 	log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, stateBucketName, k, v)
-	ci.pm.RLock()
-	defer ci.pm.RUnlock()
-	return ci.store.WriteValue(ctx, ci.cfg.Name, stateBucketName, k, v, ci.pruneIndex)
+	ci.prune.pm.RLock()
+	defer ci.prune.pm.RUnlock()
+	return ci.store.WriteValue(ctx, ci.cfg.Name, stateBucketName, k, v, ci.prune.pruneIndex)
 }
 
 func (ci *cacheInstance) writeValueIntended(ctx context.Context, wo *Opts, v []byte) error {

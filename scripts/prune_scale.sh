@@ -28,7 +28,7 @@ do
     bin/cachectl modify -n target1 $updates
 done
 
-# sleep 10
+sleep 10
 # prune all but one value
 id=$(bin/cachectl prune -n target1)
 bin/cachectl modify -n target1 --update a,b,0,c0:::string:::0
@@ -36,6 +36,8 @@ bin/cachectl modify -n target1 --update a,b,0,c0:::string:::0
 echo ""
 echo "pruning..."
 time bin/cachectl prune -n target1 --id $id
+
+sleep 10
 
 echo ""
 echo "after prune read:"

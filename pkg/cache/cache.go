@@ -46,7 +46,7 @@ type Cache interface {
 	WriteValue(ctx context.Context, name string, wo *Opts, vb []byte) error
 	// CreatePruneID creates a pruneID that can be used to trigger a prune
 	// with ApplyPrune once all updates are pushed
-	CreatePruneID(ctx context.Context, name string) (string, error)
+	CreatePruneID(ctx context.Context, name string, force bool) (string, error)
 	// ApplyPrune runs a prune on the config and state stores of the cache instance.
 	// It deletes all values that where not updated since the pruneID was generated.
 	ApplyPrune(ctx context.Context, name, id string) error

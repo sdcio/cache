@@ -56,11 +56,11 @@ func (c *cache) Init(ctx context.Context) error {
 			Dir:       c.cfg.Dir,
 		}
 		ci := newCacheInstance(ccfg, c.store)
-		ci.pruneIndex, err = c.store.GetPruneIndex(ctx, cacheName)
+		ci.prune.pruneIndex, err = c.store.GetPruneIndex(ctx, cacheName)
 		if err != nil {
 			return err
 		}
-		log.Infof("cache %s pruneIndex=%d", cacheName, ci.pruneIndex)
+		log.Infof("cache %s pruneIndex=%d", cacheName, ci.prune.pruneIndex)
 		c.caches[cacheName] = ci
 	}
 	log.Infof("loaded %d caches", len(caches))
@@ -449,14 +449,14 @@ func (c *cache) Watch(ctx context.Context, name string, store Store, prefixes []
 	return eCh, nil
 }
 
-func (c *cache) CreatePruneID(ctx context.Context, name string) (string, error) {
+func (c *cache) CreatePruneID(ctx context.Context, name string, force bool) (string, error) {
 	ci, ok := c.getCacheInstance(ctx, name)
 	if !ok {
 		return "", fmt.Errorf("cache %q does not exist", name)
 	}
-	ci.pm.Lock()
-	defer ci.pm.Unlock()
-	return ci.createPruneID(ctx)
+	ci.prune.pm.Lock()
+	defer ci.prune.pm.Unlock()
+	return ci.createPruneID(ctx, force)
 }
 
 func (c *cache) ApplyPrune(ctx context.Context, name, id string) error {
@@ -464,8 +464,8 @@ func (c *cache) ApplyPrune(ctx context.Context, name, id string) error {
 	if !ok {
 		return fmt.Errorf("cache %q does not exist", name)
 	}
-	ci.pm.Lock()
-	defer ci.pm.Unlock()
+	ci.prune.pm.Lock()
+	defer ci.prune.pm.Unlock()
 	return ci.applyPrune(ctx, id)
 }
 
