@@ -41,9 +41,10 @@ type cacheInstance struct {
 }
 
 type CacheInstanceConfig struct {
-	Name      string
-	StoreType string
-	Dir       string
+	Name            string
+	StoreType       string
+	Dir             string
+	PruneIDLifetime time.Duration
 }
 
 func createCacheInstance(ctx context.Context, cfg *CacheInstanceConfig, storage store.Store) (*cacheInstance, error) {

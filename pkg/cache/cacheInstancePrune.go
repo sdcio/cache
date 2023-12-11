@@ -11,10 +11,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	defaultPruneIDLifetime = 5 * time.Minute
-)
-
 type pruneData struct {
 	pm         *sync.RWMutex
 	pruneID    string
@@ -31,7 +27,7 @@ func (ci *cacheInstance) createPruneID(ctx context.Context, force bool) (string,
 	log.Debugf("createPruneID1: prunedata=%+v", ci.prune)
 	now := time.Now()
 	if ci.prune.pruneID != "" {
-		if !now.After(ci.prune.createdAt.Add(defaultPruneIDLifetime)) && !force {
+		if !now.After(ci.prune.createdAt.Add(ci.cfg.PruneIDLifetime)) && !force {
 			return "", errors.New("there is an already ongoing prune transaction")
 		}
 	}
