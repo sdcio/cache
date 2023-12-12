@@ -72,7 +72,7 @@ func (ci *cacheInstance) readValueCh(ctx context.Context, cname string, ro *Opts
 			err = ci.readPrefixFromIntendedStoreCh(ctx, ro.Priority, ro.Owner, ro.PriorityCount, []byte(prefix), rsCh)
 		case StoreMetadata:
 			bucket = intendedBucketName
-			err = ci.readFromMetadataStoreCh(ctx, []byte(prefix), rsCh)
+			err = ci.readFromMetadataStoreCh(ctx, []byte(prefix), ro.KeysOnly, rsCh)
 		}
 		if err != nil {
 			log.Errorf("failed to run query from store: %v", err)
@@ -175,7 +175,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreHighPrioCh(ctx context.Conte
 	pp := int32(0)
 
 	for iter := uint64(0); iter < priorityCount; iter++ {
-		vCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket,
+		vCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, false,
 			ignorePriorityHigherThanFn(pp),
 			func(k []byte) bool {
 				lk := len(k)
@@ -267,7 +267,7 @@ func (ci *cacheInstance) readPrefixFromIntendedStoreAnyPrioCh(ctx context.Contex
 	withOwner := len(owner) > 0
 	prefixLen := len(prefix)
 	// selectFn: selects keys with any priority that include the prefix
-	vCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket,
+	vCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, false,
 		func(k []byte) bool {
 			lk := len(k)
 			// must include priority(4) and timestamp(8)
@@ -381,7 +381,10 @@ func (ci *cacheInstance) readValueFromIntendedStoreHighPrioCh(ctx context.Contex
 	return e, err
 }
 
-func (ci *cacheInstance) readFromMetadataStoreCh(ctx context.Context, key []byte, kvCh chan *Entry) error {
+func (ci *cacheInstance) readFromMetadataStoreCh(ctx context.Context, key []byte, keysOnly bool, kvCh chan *Entry) error {
+	if keysOnly {
+		return ci.readFromMetadataStoreKeysOnlyCh(ctx, key, kvCh)
+	}
 	var bucket = "metadata"
 	v, err := ci.store.GetValue(ctx, ci.cfg.Name, bucket, key)
 	if err != nil {
@@ -396,6 +399,27 @@ func (ci *cacheInstance) readFromMetadataStoreCh(ctx context.Context, key []byte
 	}:
 	}
 	return nil
+}
+
+func (ci *cacheInstance) readFromMetadataStoreKeysOnlyCh(ctx context.Context, key []byte, kvCh chan *Entry) error {
+	var bucket = "metadata"
+	sCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, true)
+	if err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case kv, ok := <-sCh:
+			if !ok {
+				return nil
+			}
+			kvCh <- &Entry{
+				P: []string{string(kv.K)},
+			}
+		}
+	}
 }
 
 func pathToPrefixPattern(path []string) (string, string, error) {

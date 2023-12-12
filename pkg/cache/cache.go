@@ -41,7 +41,6 @@ type Cache interface {
 	GetCandidate(ctx context.Context, name, cname string) (*CandidateDetails, error)
 	// Candidates returns the list of candidates created for a cache instance
 	Candidates(ctx context.Context, name string) ([]*CandidateDetails, error)
-
 	// WriteValue writes a bytes value into the named cache
 	WriteValue(ctx context.Context, name string, wo *Opts, vb []byte) error
 	// CreatePruneID creates a pruneID that can be used to trigger a prune
@@ -99,6 +98,7 @@ type Opts struct {
 	Owner         string
 	Priority      int32
 	PriorityCount uint64
+	KeysOnly      bool // used with the metadata store only
 }
 
 type StatsResponse struct {

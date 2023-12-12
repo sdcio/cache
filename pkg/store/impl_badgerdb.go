@@ -120,7 +120,7 @@ func (s *badgerDBStore) Clone(ctx context.Context, name, cname string) error {
 	if err != nil {
 		return err
 	}
-	vCh, err := s.GetAll(ctx, name, "")
+	vCh, err := s.GetAll(ctx, name, "", false)
 	if err != nil {
 		return err
 	}
@@ -299,7 +299,7 @@ func (s *badgerDBStore) DeletePrefix(ctx context.Context, name, bucket string, k
 	return err
 }
 
-func (s *badgerDBStore) GetAll(ctx context.Context, name, bucket string, fn ...SelectFn) (chan *KV, error) {
+func (s *badgerDBStore) GetAll(ctx context.Context, name, bucket string, keysOnly bool, fn ...SelectFn) (chan *KV, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 

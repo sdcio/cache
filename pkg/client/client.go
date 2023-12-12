@@ -46,6 +46,7 @@ type ClientOpts struct {
 	Owner         string
 	Priority      int32
 	PriorityCount uint64
+	KeysOnly      bool
 }
 
 func New(ctx context.Context, ccfg *ClientConfig) (*Client, error) {
@@ -266,6 +267,7 @@ func (c *Client) Read(ctx context.Context, name string, ro *ClientOpts, paths []
 					Owner:         ro.Owner,
 					Priority:      ro.Priority,
 					PriorityCount: ro.PriorityCount,
+					KeysOnly:      ro.KeysOnly,
 				}
 				stream, err := c.client.Read(ctx, req, opts...)
 				if err != nil {
