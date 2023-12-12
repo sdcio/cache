@@ -303,13 +303,15 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 	var err error
 	switch req.GetPeriod() {
 	case 0:
-		ch, err = s.cache.ReadValue(ctx, req.GetName(), &cache.Opts{
-			Store:         getCacheStore(req.GetStore()),
-			Path:          req.GetPath(),
-			Owner:         req.GetOwner(),
-			Priority:      req.GetPriority(),
-			PriorityCount: req.GetPriorityCount(),
-		})
+		ch, err = s.cache.ReadValue(ctx, req.GetName(),
+			&cache.Opts{
+				Store:         getCacheStore(req.GetStore()),
+				Path:          req.GetPath(),
+				Owner:         req.GetOwner(),
+				Priority:      req.GetPriority(),
+				PriorityCount: req.GetPriorityCount(),
+				KeysOnly:      req.GetKeysOnly(),
+			})
 		if err != nil {
 			return err
 		}

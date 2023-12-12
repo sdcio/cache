@@ -150,6 +150,9 @@ message ReadRequest{
     // in case priority == 0; this specifies how 
     // many "highest" priorities we want to read.
     uint64                  priority_count  = 8;
+    // return keys only, used for reading raw intents
+    // from the metadata store
+    bool                    keys_only       = 9;
 }
 message ReadResponse{
     string                  name        = 2;

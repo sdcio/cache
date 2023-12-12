@@ -250,7 +250,7 @@ func (s *badgerSingleDBStore) DeletePrefix(ctx context.Context, name, bucket str
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDBStore) GetAll(ctx context.Context, name, bucket string, fn ...SelectFn) (chan *KV, error) {
+func (s *badgerSingleDBStore) GetAll(ctx context.Context, name, bucket string, keysOnly bool, fn ...SelectFn) (chan *KV, error) {
 	if bucket == "" {
 		return nil, errors.New("a bucket name must be specified")
 	}
@@ -260,40 +260,11 @@ func (s *badgerSingleDBStore) GetAll(ctx context.Context, name, bucket string, f
 
 	if index, ok := s.cacheIndexes[name]; ok {
 		kvCh := make(chan *KV)
-		go func() {
-			defer close(kvCh)
-			fk := buildFullKey(bucket, index, nil)
-			stream := s.db.NewStream()
-			stream.Prefix = fk
-			// TODO: revisit with selectFn
-			// stream.ChooseKey = func(item *badger.Item) bool {
-			// 	return bytes.HasPrefix(item.Key(), fk)
-			// }
-			stream.Send = func(buf *z.Buffer) error {
-				kvs, err := badger.BufferToKVList(buf)
-				if err != nil {
-					return err
-				}
-			OUTER:
-				for _, kv := range kvs.GetKv() {
-					for _, sfn := range fn {
-						if !sfn(kv.GetKey()[3:]) {
-							continue OUTER
-						}
-					}
-					err = kvToChan(ctx, kv.GetKey()[3:], kv.GetValue(), kvCh)
-					if err != nil {
-						return err
-					}
-				}
-				return nil
-			}
-			err := stream.Orchestrate(ctx)
-			if err != nil {
-				log.Errorf("stream orchestrate error: %v", err)
-			}
-
-		}()
+		if keysOnly {
+			go s.getAllKeysOnly(ctx, bucket, index, kvCh, fn...)
+			return kvCh, nil
+		}
+		go s.getAll(ctx, bucket, index, kvCh, fn...)
 		return kvCh, nil
 	}
 	return nil, fmt.Errorf("cache %q does not exist", name)
@@ -803,4 +774,68 @@ func (s *badgerSingleDBStore) writeCacheIndex(ctx context.Context, index uint16,
 		mk = append(mk, bn...)
 		return txn.Set(mk, []byte{pruneIndex})
 	})
+}
+
+func (s *badgerSingleDBStore) getAll(ctx context.Context, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) {
+	defer close(kvCh)
+	fk := buildFullKey(bucket, index, nil)
+	stream := s.db.NewStream()
+	stream.Prefix = fk
+	// TODO: revisit with selectFn
+	// stream.ChooseKey = func(item *badger.Item) bool {
+	// 	return bytes.HasPrefix(item.Key(), fk)
+	// }
+	stream.Send = func(buf *z.Buffer) error {
+		kvs, err := badger.BufferToKVList(buf)
+		if err != nil {
+			return err
+		}
+	OUTER:
+		for _, kv := range kvs.GetKv() {
+			for _, sfn := range fn {
+				if !sfn(kv.GetKey()[3:]) {
+					continue OUTER
+				}
+			}
+			err = kvToChan(ctx, kv.GetKey()[3:], kv.GetValue(), kvCh)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	err := stream.Orchestrate(ctx)
+	if err != nil {
+		log.Errorf("stream orchestrate error: %v", err)
+	}
+}
+
+func (s *badgerSingleDBStore) getAllKeysOnly(ctx context.Context, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) {
+	defer close(kvCh)
+	fk := buildFullKey(bucket, index, nil)
+	err := s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.PrefetchSize = 0xFFFF
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+	OUTER:
+		for it.Seek(fk); it.ValidForPrefix(fk); it.Next() {
+			key := it.Item().Key()
+			for _, sfn := range fn {
+				if !sfn(key[3:]) {
+					continue OUTER
+				}
+			}
+			err := kvToChan(ctx, key[3:], nil, kvCh)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Errorf("failed getAllKeysOnly: %v", err)
+	}
 }
