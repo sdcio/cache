@@ -23,7 +23,7 @@ require (
 require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/dgraph-io/ristretto v0.1.1
-	github.com/iptecharch/sdc-protos v0.0.11
+	github.com/iptecharch/sdc-protos v0.0.12
 	github.com/kylelemons/godebug v1.1.0
 )
 
