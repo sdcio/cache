@@ -248,8 +248,6 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 			log.Infof("highest priority for path %v: %+v: %v", path, e, err)
 			if err != nil {
 				if errors.Is(err, store.ErrKeyNotFound) {
-					fmt.Println(path)
-					// copy path
 					e := &Entry{
 						Timestamp: ts,
 						Owner:     cand.owner,
