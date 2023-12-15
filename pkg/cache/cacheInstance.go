@@ -248,13 +248,15 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 			log.Infof("highest priority for path %v: %+v: %v", path, e, err)
 			if err != nil {
 				if errors.Is(err, store.ErrKeyNotFound) {
-					es = append(es, &Entry{
+					e := &Entry{
 						Timestamp: ts,
 						Owner:     cand.owner,
 						Priority:  cand.priority,
-						P:         path,
+						P:         make([]string, 0, len(path)),
 						V:         vt,
-					})
+					}
+					e.P = append(e.P, path...)
+					es = append(es, e)
 					return nil
 				}
 				return err
@@ -265,9 +267,10 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 					Timestamp: ts,
 					Owner:     cand.owner,
 					Priority:  cand.priority,
-					P:         path,
+					P:         make([]string, 0, len(path)),
 					V:         vt,
 				}
+				e.P = append(e.P, path...)
 				es = append(es, e)
 			case e.Priority < cand.priority:
 				es = append(es, e)
