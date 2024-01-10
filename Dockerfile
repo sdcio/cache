@@ -7,7 +7,9 @@ RUN git config --global url.ssh://git@github.com/.insteadOf https://github.com/
 ADD . /build
 WORKDIR /build
 
-RUN CGO_ENABLED=0 go build -o /build/cache -ldflags="-s -w" .
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=ssh \
+    CGO_ENABLED=0 go build -o /build/cache -ldflags="-s -w" .
 
 FROM scratch
 COPY --from=builder /build/cache /app/
