@@ -11,7 +11,8 @@ build:
 	go build -ldflags="-s -w" -o bin/cached main.go
 
 docker-build:
-	docker build . -t $(IMAGE)
+	ssh-add ./keys/id_rsa 2>/dev/null; true
+	docker build . -t $(IMAGE) --ssh default=$(SSH_AUTH_SOCK)
 
 docker-push: docker-build
 	docker push $(IMAGE)
