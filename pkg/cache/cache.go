@@ -41,6 +41,7 @@ type Cache interface {
 	GetCandidate(ctx context.Context, name, cname string) (*CandidateDetails, error)
 	// Candidates returns the list of candidates created for a cache instance
 	Candidates(ctx context.Context, name string) ([]*CandidateDetails, error)
+
 	// WriteValue writes a bytes value into the named cache
 	WriteValue(ctx context.Context, name string, wo *Opts, vb []byte) error
 	// CreatePruneID creates a pruneID that can be used to trigger a prune
@@ -49,6 +50,7 @@ type Cache interface {
 	// ApplyPrune runs a prune on the config and state stores of the cache instance.
 	// It deletes all values that where not updated since the pruneID was generated.
 	ApplyPrune(ctx context.Context, name, id string) error
+
 	// ReadValue reads a value from a cache instance.
 	ReadValue(ctx context.Context, name string, ro *Opts) (chan *Entry, error)
 	// ReadValuePeriodic reads a value from a cache instance every period
@@ -94,7 +96,7 @@ type CandidateDetails struct {
 
 type Opts struct {
 	Store         Store
-	Path          []string
+	Path          [][]string // TODO: replace with cachepb.Path
 	Owner         string
 	Priority      int32
 	PriorityCount uint64

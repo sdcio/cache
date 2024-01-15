@@ -242,9 +242,11 @@ func runRead(ctx context.Context, cclient cachepb.CacheClient) {
 			// read all
 			readStream, err := cclient.Read(ctx, &cachepb.ReadRequest{
 				Name: cacheName,
-				Path: []string{
-					"A",
-				},
+				Path: []*cachepb.Path{{
+					Elem: []string{
+						"A",
+					},
+				}},
 			})
 			if err != nil {
 				log.Error("fail read:", err)

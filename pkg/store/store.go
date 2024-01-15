@@ -26,6 +26,9 @@ type Store interface {
 	GetValue(ctx context.Context, name, bucket string, k []byte) ([]byte, error)
 	GetAll(ctx context.Context, name, bucket string, keysOnly bool, fn ...SelectFn) (chan *KV, error)
 	GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte, fn ...SelectFn) (chan *KV, error)
+	//
+	GetBatch(ctx context.Context, name, bucket string, keys [][]byte, fn ...SelectFn) (chan *KV, error)
+	//
 	GetN(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error)
 	Watch(ctx context.Context, name, bucket string, prefixes [][]byte) (chan *KV, error)
 
@@ -60,6 +63,7 @@ func WithPrefix(prefix []byte) SelectFn {
 const (
 	storeTypeBadgerDB       = "badgerdb"
 	storeTypeBadgerSingleDB = "badgerdbsingle"
+	storeTypeBadgerDBV2     = "badgerdbv2"
 )
 const (
 	metaPrefix       uint8 = 0
@@ -86,6 +90,8 @@ func New(typ, p string) (Store, error) {
 		return newBadgerDBStore(p), nil
 	case storeTypeBadgerSingleDB:
 		return newBadgerSingleDBStore(p), nil
+	case storeTypeBadgerDBV2:
+		return newBadgerDBV2Store(p), nil
 	default:
 		return nil, fmt.Errorf("unknown store type %q", typ)
 	}
@@ -96,6 +102,7 @@ type StoreStats struct {
 	KeysPerBucket map[string]int64
 }
 
+// kvToChan copies both k and v and send them through the kvCh channel
 func kvToChan(ctx context.Context, k, v []byte, kvCh chan *KV) error {
 	kb := make([]byte, len(k))
 	vb := make([]byte, len(v))

@@ -301,12 +301,18 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 	ctx := stream.Context()
 	var ch chan *cache.Entry
 	var err error
+	
+	paths := make([][]string, 0, len(req.GetPath()))
+	for _, pp := range req.GetPath() {
+		paths = append(paths, pp.GetElem())
+	}
+
 	switch req.GetPeriod() {
 	case 0:
 		ch, err = s.cache.ReadValue(ctx, req.GetName(),
 			&cache.Opts{
 				Store:         getCacheStore(req.GetStore()),
-				Path:          req.GetPath(),
+				Path:          paths,
 				Owner:         req.GetOwner(),
 				Priority:      req.GetPriority(),
 				PriorityCount: req.GetPriorityCount(),
@@ -322,7 +328,7 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 		}
 		ch, err = s.cache.ReadValuePeriodic(ctx, req.GetName(), &cache.Opts{
 			Store:    getCacheStore(req.GetStore()),
-			Path:     req.GetPath(),
+			Path:     paths,
 			Owner:    req.GetOwner(),
 			Priority: req.GetPriority(),
 		}, period)
@@ -330,6 +336,7 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 			return err
 		}
 	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -362,7 +369,7 @@ func (s *Server) modifyWrite(ctx context.Context, req *cachepb.WriteValueRequest
 		Owner:    req.GetOwner(),
 		Priority: req.GetPriority(),
 		Store:    getCacheStore(req.GetStore()),
-		Path:     req.GetPath(),
+		Path:     [][]string{req.GetPath()},
 	}, req.GetValue().GetValue(),
 	)
 }
@@ -371,7 +378,7 @@ func (s *Server) modifyDelete(ctx context.Context, req *cachepb.DeleteValueReque
 	// delete value from cache
 	return s.cache.DeletePrefix(ctx, req.GetName(), &cache.Opts{
 		Store:    getCacheStore(req.GetStore()),
-		Path:     req.GetPath(),
+		Path:     [][]string{req.GetPath()},
 		Owner:    req.GetOwner(),
 		Priority: req.GetPriority(),
 	})

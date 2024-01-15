@@ -28,17 +28,17 @@ bin/cachectl get -n target2
 bin/cachectl modify -n target1 --update a,b,c1:::string:::1 --update a,b,c2:::string:::2
 bin/cachectl modify -n target1 --update a,b,c3:::string:::3
 bin/cachectl modify -n target1 --update a,b,c4:::string:::4
-bin/cachectl read -n target1 -p a,b
-bin/cachectl read -n target1 -p a,b,c1
-bin/cachectl read -n target1 -p a,b,c2
-bin/cachectl read -n target1 -p a,b,c3
-bin/cachectl read -n target1 -p a,b,c4
-bin/cachectl read -n target1 -p a,b,c1 -p a,b,c2 -p a,b,c3 -p a,b,c4
+bin/cachectl read -n target1 -p a,b --format flat
+bin/cachectl read -n target1 -p a,b,c1 --format flat
+bin/cachectl read -n target1 -p a,b,c2 --format flat
+bin/cachectl read -n target1 -p a,b,c3 --format flat
+bin/cachectl read -n target1 -p a,b,c4 --format flat 
+bin/cachectl read -n target1 -p a,b,c1 -p a,b,c2 -p a,b,c3 -p a,b,c4 --format flat
 # write, delete and read from candidate
 bin/cachectl modify -n target1/cl1 --update a,b,c2:::string:::42
-bin/cachectl read -n target1/cl1 -p a,b,c1
-bin/cachectl read -n target1/cl1 -p a,b,c2
-bin/cachectl read -n target1/cl1 -p a,b
+bin/cachectl read -n target1/cl1 -p a,b,c1 --format flat
+bin/cachectl read -n target1/cl1 -p a,b,c2 --format flat
+bin/cachectl read -n target1/cl1 -p a,b --format flat
 bin/cachectl modify -n target1/cl1 --delete a,b,c1
 bin/cachectl read -n target1/cl1 -p a,b
 bin/cachectl read -n target1 -p a,b # leaf c1 is still in main
@@ -72,11 +72,31 @@ bin/cachectl modify -n target1 -s state --update a,b,c1:::string:::1 --update a,
 bin/cachectl modify -n target1 -s state --update a,b,c3:::string:::3
 bin/cachectl modify -n target1 -s state --update a,b,c4:::string:::4
 # intended
-bin/cachectl modify -n target1 -s intended --update a,b,c1:::string:::1 --update a,b,c2:::string:::2 --owner me --priority 100
-bin/cachectl modify -n target1 -s intended --update a,b,c3:::string:::3
-bin/cachectl modify -n target1 -s intended --update a,b,c4:::string:::4
+bin/cachectl modify -n target1 -s intended --update a,b,c1:::string:::11 --owner me --priority 100
+bin/cachectl modify -n target1 -s intended --update a,b,c2:::string:::21 --owner me --priority 100
+bin/cachectl modify -n target1 -s intended --update a,b,c3:::string:::31 --owner me --priority 100
+bin/cachectl modify -n target1 -s intended --update a,b,c4:::string:::41 --owner me --priority 100
 
-bin/cachectl read -n target1 -s intended -p a,b --owner me --priority 100
+bin/cachectl modify -n target1 -s intended --update a,b,c1:::string:::12 --owner me2 --priority 99
+bin/cachectl modify -n target1 -s intended --update a,b,c2:::string:::22 --owner me2 --priority 99
+bin/cachectl modify -n target1 -s intended --update a,b,c3:::string:::32 --owner me2 --priority 99
+bin/cachectl modify -n target1 -s intended --update a,b,c4:::string:::42 --owner me2 --priority 99
+
+bin/cachectl modify -n target1 -s intended --update a,b,c1:::string:::13 --owner me3 --priority 98
+bin/cachectl modify -n target1 -s intended --update a,b,c2:::string:::23 --owner me3 --priority 98
+bin/cachectl modify -n target1 -s intended --update a,b,c3:::string:::33 --owner me3 --priority 98
+bin/cachectl modify -n target1 -s intended --update a,b,c4:::string:::43 --owner me3 --priority 98
+
+bin/cachectl read -n target1 -s intended -p a,b,c1 --owner me --priority 100 --format flat
+
+bin/cachectl read -n target1 -s intended -p a,b,c2 --owner me --priority 100 --format flat
+bin/cachectl read -n target1 -s intended -p a,b,c3 --owner me --priority 100 --format flat
+bin/cachectl read -n target1 -s intended -p a,b,c4 --owner me --priority 100 --format flat
+
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priotity-count 2
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priotity-count 3
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priotity-count 10
 ```
 
 ## benchmark against the lab in labs/single
@@ -100,12 +120,13 @@ grpc-server:
 ### test results
 
 ```shell
-bin/cachectl bench -a clab-cache-cache1:50100 \
+bin/cachectl bench \
     --create \
     --periodic \
     --concurrency 16 \
     --num-cache 16 \
-    --num-path 2500000
+    --num-path 2500000 \
+    -a clab-cache-cache1:50100 
 
 caches          : 16
 concurrency     : 16

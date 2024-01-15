@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -235,57 +233,9 @@ func (c *Client) Modify(ctx context.Context, name string, wo *ClientOpts, dels [
 // Read value(s) from a cache instance
 func (c *Client) Read(ctx context.Context, name string, ro *ClientOpts, paths [][]string, period time.Duration, opts ...grpc.CallOption) chan *cachepb.ReadResponse {
 	updCh := make(chan *cachepb.ReadResponse)
-	go func() {
-		defer close(updCh)
-		wg := new(sync.WaitGroup)
-		sem := semaphore.NewWeighted(c.cfg.MaxReadStream)
-		var cStore cachepb.Store
-		switch ro.Store {
-		case cache.StoreConfig:
-			cStore = cachepb.Store_CONFIG
-		case cache.StoreState:
-			cStore = cachepb.Store_STATE
-		case cache.StoreIntended:
-			cStore = cachepb.Store_INTENDED
-		case cache.StoreMetadata:
-			cStore = cachepb.Store_METADATA
-		}
-		for _, p := range paths {
-			wg.Add(1)
-			go func(p []string) {
-				defer wg.Done()
-				err := sem.Acquire(ctx, 1)
-				if err != nil {
-					return
-				}
-				defer sem.Release(1)
-				req := &cachepb.ReadRequest{
-					Name:          name,
-					Path:          p,
-					Store:         cStore,
-					Period:        uint64(period),
-					Owner:         ro.Owner,
-					Priority:      ro.Priority,
-					PriorityCount: ro.PriorityCount,
-					KeysOnly:      ro.KeysOnly,
-				}
-				stream, err := c.client.Read(ctx, req, opts...)
-				if err != nil {
-					log.Errorf("failed to create read stream: %v", err)
-					return
-				}
-				for {
-					rsp, err := stream.Recv()
-					if err != nil {
-						return
-						// return nil, err
-					}
-					updCh <- rsp
-				}
-			}(p)
-		}
-		wg.Wait()
-	}()
+
+	go c.read(ctx, name, ro, paths, period, updCh, opts...)
+
 	return updCh
 }
 
@@ -392,4 +342,47 @@ func (c *Client) Prune(ctx context.Context, name string, id string, force bool, 
 		Id:    id,
 		Force: force,
 	}, opts...)
+}
+
+// helpers
+func (c *Client) read(ctx context.Context, name string, ro *ClientOpts, paths [][]string, period time.Duration, updCh chan *cachepb.ReadResponse, opts ...grpc.CallOption) {
+	defer close(updCh)
+	var cStore cachepb.Store
+	switch ro.Store {
+	case cache.StoreConfig:
+		cStore = cachepb.Store_CONFIG
+	case cache.StoreState:
+		cStore = cachepb.Store_STATE
+	case cache.StoreIntended:
+		cStore = cachepb.Store_INTENDED
+	case cache.StoreMetadata:
+		cStore = cachepb.Store_METADATA
+	}
+	cachePaths := make([]*cachepb.Path, 0, len(paths))
+	for _, p := range paths {
+		cachePaths = append(cachePaths, &cachepb.Path{Elem: p})
+	}
+	req := &cachepb.ReadRequest{
+		Name:          name,
+		Path:          cachePaths,
+		Store:         cStore,
+		Period:        uint64(period),
+		Owner:         ro.Owner,
+		Priority:      ro.Priority,
+		PriorityCount: ro.PriorityCount,
+		KeysOnly:      ro.KeysOnly,
+	}
+	stream, err := c.client.Read(ctx, req, opts...)
+	if err != nil {
+		log.Errorf("failed to create read stream: %v", err)
+		return
+	}
+	for {
+		rsp, err := stream.Recv()
+		if err != nil {
+			return
+			// return nil, err
+		}
+		updCh <- rsp
+	}
 }
