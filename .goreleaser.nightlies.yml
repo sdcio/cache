@@ -1,0 +1,46 @@
+project_name: cache
+builds:
+  - id: cache
+    binary: cache
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w 
+    goos:
+      - linux
+    goarch:
+      - amd64
+  - id: cachectl
+    binary: cachectl
+    main: ./cachectl/main.go
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w 
+    goos:
+      - linux
+    goarch:
+      - amd64
+dockers:
+  - goos: linux
+    goarch: amd64
+    ids:
+      - cache
+    image_templates:
+      - "ghcr.io/iptecharch/cache:v0.0.0-{{ .ShortCommit }}"
+      - "ghcr.io/iptecharch/cache:v0.0.0-dev-latest"
+    dockerfile: goreleaser.dockerfile
+    skip_push: false
+  - goos: linux
+    goarch: amd64
+    ids:
+      - cache
+    image_templates:
+      - "registry.k8s.hans.io/iptecharch/cache:v0.0.0-{{ .ShortCommit }}"
+      - "registry.k8s.hans.io/iptecharch/cache:v0.0.0-dev-latest"
+    dockerfile: goreleaser.dockerfile
+    skip_push: false
+    push_flags:
+      - --tls-verify=false
+release:
+  disable: true
