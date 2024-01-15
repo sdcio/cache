@@ -1,6 +1,8 @@
 package cache
 
-import "testing"
+import (
+	"testing"
+)
 
 func Test_pathToPrefixPattern(t *testing.T) {
 	type args struct {

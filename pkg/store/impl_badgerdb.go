@@ -437,6 +437,10 @@ func (s *badgerDBStore) GetPrefix(ctx context.Context, name, bucket string, pref
 	return kvCh, nil
 }
 
+func (s *badgerDBStore) GetBatch(ctx context.Context, name, bucket string, keys [][]byte, fn ...SelectFn) (chan *KV, error) {
+	return nil, nil
+}
+
 func (s *badgerDBStore) Watch(ctx context.Context, name, bucket string, prefixes [][]byte) (chan *KV, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()

@@ -134,8 +134,8 @@ message PruneResponse{
 message ReadRequest{
     // cache instance name
     string                  name            = 2;
-    // path
-    repeated string         path            = 3;
+    // paths
+    repeated Path           path            = 3;
     // store type: config, state, intended, metadata
     Store                   store           = 4;
     // read period in nano seconds, if > 0
