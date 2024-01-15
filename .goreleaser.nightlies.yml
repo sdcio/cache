@@ -26,6 +26,7 @@ dockers:
     goarch: amd64
     ids:
       - cache
+      - cachectl
     image_templates:
       - "ghcr.io/iptecharch/cache:v0.0.0-{{ .ShortCommit }}"
       - "ghcr.io/iptecharch/cache:v0.0.0-dev-latest"
@@ -35,6 +36,7 @@ dockers:
     goarch: amd64
     ids:
       - cache
+      - cachectl
     image_templates:
       - "registry.k8s.hans.io/iptecharch/cache:v0.0.0-{{ .ShortCommit }}"
       - "registry.k8s.hans.io/iptecharch/cache:v0.0.0-dev-latest"
