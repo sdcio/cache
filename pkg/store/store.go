@@ -61,16 +61,14 @@ func WithPrefix(prefix []byte) SelectFn {
 }
 
 const (
-	storeTypeBadgerDB       = "badgerdb"
-	storeTypeBadgerSingleDB = "badgerdbsingle"
-	storeTypeBadgerDBV2     = "badgerdbv2"
+	storeTypeBadgerDB = "badgerdb"
 )
 const (
-	metaPrefix       uint8 = 0
-	configPrefix     uint8 = 1
-	statePrefix      uint8 = 2
-	intendedPrefix   uint8 = 3
-	intentMetaPrefix uint8 = 4
+	metaPrefix     uint8 = 0
+	configPrefix   uint8 = 1
+	statePrefix    uint8 = 2
+	intendedPrefix uint8 = 3
+	intentsPrefix  uint8 = 4
 )
 
 const (
@@ -87,10 +85,6 @@ var (
 func New(typ, p string) (Store, error) {
 	switch typ {
 	case storeTypeBadgerDB:
-		return newBadgerDBStore(p), nil
-	case storeTypeBadgerSingleDB:
-		return newBadgerSingleDBStore(p), nil
-	case storeTypeBadgerDBV2:
 		return newBadgerDBV2Store(p), nil
 	default:
 		return nil, fmt.Errorf("unknown store type %q", typ)

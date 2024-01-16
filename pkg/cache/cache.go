@@ -15,7 +15,7 @@ const (
 	StoreConfig   Store = 0
 	StoreState    Store = 1
 	StoreIntended Store = 2
-	StoreMetadata Store = 3
+	StoreIntents  Store = 3
 )
 
 type Cache interface {
@@ -100,7 +100,7 @@ type Opts struct {
 	Owner         string
 	Priority      int32
 	PriorityCount uint64
-	KeysOnly      bool // used with the metadata store only
+	KeysOnly      bool // used with the intents store only
 }
 
 type StatsResponse struct {
