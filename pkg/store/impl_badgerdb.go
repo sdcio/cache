@@ -576,7 +576,7 @@ func (s *badgerSingleDB) SetPruneIndex(ctx context.Context, name string, pruneIn
 			return txn.Set(mk, []byte{pruneIndex})
 		})
 	}
-	return nil
+	return fmt.Errorf("unknown cache name %s", name)
 }
 
 func (s *badgerSingleDB) GetPruneIndex(ctx context.Context, name string) (uint8, error) {
