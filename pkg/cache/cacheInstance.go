@@ -21,7 +21,7 @@ const (
 	configBucketName   = "config"
 	stateBucketName    = "state"
 	intendedBucketName = "intended"
-	metadataBucketName = "metadata"
+	intentsBucketName  = "intents"
 
 	// max int32
 	defaultWritePriority = 0x7FFFFFFF
@@ -241,11 +241,11 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 	ts := uint64(time.Now().UnixNano())
 	err := cand.updates.Query([]string{},
 		func(path []string, _ *ctree.Leaf, val interface{}) error {
-			log.Infof("query path %v", path)
+			log.Debugf("query path %v", path)
 			vt := val.([]byte)
 			bPath := []byte(strings.Join(path, delimStr))
 			e, err := ci.readValueFromIntendedStoreHighPrioCh(ctx, bPath)
-			log.Infof("highest priority for path %v: %+v: %v", path, e, err)
+			log.Debugf("highest priority for path %v: %+v: %v", path, e, err)
 			if err != nil {
 				if errors.Is(err, store.ErrKeyNotFound) {
 					e := &Entry{
@@ -280,10 +280,10 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 	if err != nil {
 		return nil, nil, err
 	}
-	log.Infof("cache %q: candidate %q diff result\n", ci.cfg.Name, candidate)
-	log.Infof("cache %q: deletes: %v\n", ci.cfg.Name, dels)
+	log.Debugf("cache %q: candidate %q diff result", ci.cfg.Name, candidate)
+	log.Debugf("cache %q: deletes: %v", ci.cfg.Name, dels)
 	for i, e := range es {
-		log.Infof("cache %q: updates: %d: %s\n", ci.cfg.Name, i, e)
+		log.Debugf("cache %q: updates: %d: %s\n", ci.cfg.Name, i, e)
 	}
 	return dels, es, nil
 }

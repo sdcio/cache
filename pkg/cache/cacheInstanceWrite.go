@@ -20,8 +20,8 @@ func (ci *cacheInstance) writeValue(ctx context.Context, cname string, wo *Opts,
 		return ci.writeValueState(ctx, wo, b)
 	case StoreIntended:
 		return ci.writeValueIntended(ctx, wo, b)
-	case StoreMetadata:
-		return ci.writeValueMetadata(ctx, wo, b)
+	case StoreIntents:
+		return ci.writeValueIntents(ctx, wo, b)
 	}
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
@@ -94,10 +94,10 @@ func (ci *cacheInstance) writeValueIntended(ctx context.Context, wo *Opts, v []b
 	return nil
 }
 
-func (ci *cacheInstance) writeValueMetadata(ctx context.Context, wo *Opts, v []byte) error {
+func (ci *cacheInstance) writeValueIntents(ctx context.Context, wo *Opts, v []byte) error {
 	k := []byte(strings.Join(wo.Path[0], delimStr))
-	log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, metadataBucketName, k, v)
-	return ci.store.WriteValue(ctx, ci.cfg.Name, metadataBucketName, k, v, 0)
+	log.Debugf("writing to %q: bucket=%s, k=%s, v=%v", ci.cfg.Name, intentsBucketName, k, v)
+	return ci.store.WriteValue(ctx, ci.cfg.Name, intentsBucketName, k, v, 0)
 }
 
 func (ci *cacheInstance) writeValueConfigCandidate(ctx context.Context, cname string, wo *Opts, v []byte) error {
@@ -128,8 +128,8 @@ func (ci *cacheInstance) deleteValue(ctx context.Context, cname string, wo *Opts
 		return ci.deleteValueState(ctx, wo)
 	case StoreIntended:
 		return ci.deleteValueIntended(ctx, wo)
-	case StoreMetadata:
-		return ci.deleteValueMetadata(ctx, wo)
+	case StoreIntents:
+		return ci.deleteValueIntents(ctx, wo)
 	}
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
@@ -142,8 +142,8 @@ func (ci *cacheInstance) deletePrefix(ctx context.Context, cname string, wo *Opt
 		return ci.deletePrefixState(ctx, wo)
 	case StoreIntended:
 		return ci.deletePrefixIntended(ctx, wo)
-	case StoreMetadata:
-		return ci.deletePrefixMetadata(ctx, wo)
+	case StoreIntents:
+		return ci.deletePrefixIntents(ctx, wo)
 	}
 	return fmt.Errorf("unknown store: %v", wo.Store)
 }
@@ -184,8 +184,8 @@ func (ci *cacheInstance) deleteValueIntended(ctx context.Context, wo *Opts) erro
 		})
 }
 
-func (ci *cacheInstance) deleteValueMetadata(ctx context.Context, wo *Opts) error {
-	return ci.store.DeleteValue(ctx, ci.cfg.Name, metadataBucketName, []byte(strings.Join(wo.Path[0], delimStr)))
+func (ci *cacheInstance) deleteValueIntents(ctx context.Context, wo *Opts) error {
+	return ci.store.DeleteValue(ctx, ci.cfg.Name, intentsBucketName, []byte(strings.Join(wo.Path[0], delimStr)))
 }
 
 func (ci *cacheInstance) deletePrefixConfig(ctx context.Context, cname string, wo *Opts) error {
@@ -218,8 +218,8 @@ func (ci *cacheInstance) deletePrefixIntended(ctx context.Context, wo *Opts) err
 		})
 }
 
-func (ci *cacheInstance) deletePrefixMetadata(ctx context.Context, wo *Opts) error {
-	return ci.store.DeletePrefix(ctx, ci.cfg.Name, metadataBucketName, []byte(strings.Join(wo.Path[0], delimStr)))
+func (ci *cacheInstance) deletePrefixIntents(ctx context.Context, wo *Opts) error {
+	return ci.store.DeletePrefix(ctx, ci.cfg.Name, intentsBucketName, []byte(strings.Join(wo.Path[0], delimStr)))
 }
 
 func buildIntendedStoreWriteKey(path []string, priority int32, owner string) []byte {

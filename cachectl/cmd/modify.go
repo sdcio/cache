@@ -48,8 +48,8 @@ var modifyCmd = &cobra.Command{
 			store = cache.StoreState
 		case "intended":
 			store = cache.StoreIntended
-		case "metadata":
-			store = cache.StoreMetadata
+		case "intents":
+			store = cache.StoreIntents
 		default:
 			return fmt.Errorf("unknown store name: %s", storeName)
 		}
