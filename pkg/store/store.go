@@ -85,7 +85,7 @@ var (
 func New(typ, p string) (Store, error) {
 	switch typ {
 	case storeTypeBadgerDB:
-		return newBadgerDBV2Store(p), nil
+		return newBadgerDBStore(p), nil
 	default:
 		return nil, fmt.Errorf("unknown store type %q", typ)
 	}

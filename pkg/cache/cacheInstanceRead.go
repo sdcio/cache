@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 
@@ -280,7 +279,7 @@ func (ci *cacheInstance) readValueFromIntendedStoreHighPrioCh(ctx context.Contex
 
 func (ci *cacheInstance) readFromIntentsStoreCh(ctx context.Context, key []byte, keysOnly bool, kvCh chan *Entry) error {
 	if keysOnly {
-		return ci.readFromIntentsStoreKeysOnlyCh(ctx, key, kvCh)
+		return ci.readFromIntentsStoreKeysOnlyCh(ctx, kvCh)
 	}
 	var bucket = "intents"
 	v, err := ci.store.GetValue(ctx, ci.cfg.Name, bucket, key)
@@ -298,7 +297,7 @@ func (ci *cacheInstance) readFromIntentsStoreCh(ctx context.Context, key []byte,
 	return nil
 }
 
-func (ci *cacheInstance) readFromIntentsStoreKeysOnlyCh(ctx context.Context, key []byte, kvCh chan *Entry) error {
+func (ci *cacheInstance) readFromIntentsStoreKeysOnlyCh(ctx context.Context, kvCh chan *Entry) error {
 	var bucket = "intents"
 	sCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, true)
 	if err != nil {
@@ -317,26 +316,6 @@ func (ci *cacheInstance) readFromIntentsStoreKeysOnlyCh(ctx context.Context, key
 			}
 		}
 	}
-}
-
-func pathToPrefixPattern(path []string) (string, string, error) {
-	for i := range path {
-		if path[i] == "*" {
-			path[i] = ".*"
-		}
-	}
-	fp := strings.Join(path, delimStr)
-	re, err := regexp.Compile(fp)
-	if err != nil {
-		return "", "", err
-	}
-	prefix, all := re.LiteralPrefix()
-	if all {
-		return prefix, "", nil
-	}
-	pattern := strings.TrimPrefix(fp, prefix)
-	prefix = strings.TrimSuffix(prefix, delimStr)
-	return prefix, pattern, nil
 }
 
 func kvToEntry(v *store.KV, bucket string) (*Entry, error) {
