@@ -173,8 +173,7 @@ func (ci *cacheInstance) readFromIntendedStore(ctx context.Context, ro *Opts, rs
 func (ci *cacheInstance) readFromIntentsStore(ctx context.Context, ro *Opts, rsCh chan *Entry) error {
 	defer close(rsCh)
 	for _, p := range ro.Path {
-		prefix, _, _ := pathToPrefixPattern(p)
-		err := ci.readFromIntentsStoreCh(ctx, []byte(prefix), ro.KeysOnly, rsCh)
+		err := ci.readFromIntentsStoreCh(ctx, []byte(strings.Join(p, delimStr)), ro.KeysOnly, rsCh)
 		if err != nil {
 			return err
 		}
