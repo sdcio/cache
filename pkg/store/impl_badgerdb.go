@@ -23,7 +23,7 @@ const (
 	dbName = "cached"
 )
 
-type badgerSingleDB struct {
+type badgerDB struct {
 	path         string
 	cfn          context.CancelFunc
 	m            *sync.RWMutex
@@ -32,11 +32,11 @@ type badgerSingleDB struct {
 	db           *badger.DB
 }
 
-func newBadgerDBV2Store(p string) Store {
+func newBadgerDBStore(p string) Store {
 	if p == "" {
 		p = dbName
 	}
-	s := &badgerSingleDB{
+	s := &badgerDB{
 		path:         p,
 		m:            &sync.RWMutex{},
 		cacheIndexes: map[string]uint16{},
@@ -72,7 +72,7 @@ LOAD_CACHES:
 				log.Warnf("found short key(<3) in caches store: %x", k)
 				continue
 			}
-			log.Debugf("loading meta key: %x | %x | %s\n", k[0], k[1:3], string(k[3:]))
+			log.Debugf("loading meta key: %x | %x | %s", k[0], k[1:3], string(k[3:]))
 			cacheIndex := binary.BigEndian.Uint16(k[1:3])
 			cacheName := string(k[3:])
 			s.cacheIndexes[cacheName] = cacheIndex
@@ -89,7 +89,7 @@ LOAD_CACHES:
 	return s
 }
 
-func (s *badgerSingleDB) CreateCache(ctx context.Context, name string) error {
+func (s *badgerDB) CreateCache(ctx context.Context, name string) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -113,7 +113,7 @@ func (s *badgerSingleDB) CreateCache(ctx context.Context, name string) error {
 	return nil
 }
 
-func (s *badgerSingleDB) ListCaches(ctx context.Context) ([]string, error) {
+func (s *badgerDB) ListCaches(ctx context.Context) ([]string, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -125,7 +125,7 @@ func (s *badgerSingleDB) ListCaches(ctx context.Context) ([]string, error) {
 	return caches, nil
 }
 
-func (s *badgerSingleDB) DeleteCache(ctx context.Context, name string) error {
+func (s *badgerDB) DeleteCache(ctx context.Context, name string) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -146,7 +146,7 @@ func (s *badgerSingleDB) DeleteCache(ctx context.Context, name string) error {
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) Clone(ctx context.Context, name, cname string) error {
+func (s *badgerDB) Clone(ctx context.Context, name, cname string) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -171,7 +171,7 @@ func (s *badgerSingleDB) Clone(ctx context.Context, name, cname string) error {
 
 // data
 
-func (s *badgerSingleDB) WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte, m byte) error {
+func (s *badgerDB) WriteValue(ctx context.Context, name, bucket string, k []byte, v []byte, m byte) error {
 	if bucket == "" {
 		return errors.New("a bucket name must be specified")
 	}
@@ -191,7 +191,7 @@ func (s *badgerSingleDB) WriteValue(ctx context.Context, name, bucket string, k 
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) GetValue(ctx context.Context, name, bucket string, k []byte) ([]byte, error) {
+func (s *badgerDB) GetValue(ctx context.Context, name, bucket string, k []byte) ([]byte, error) {
 	if bucket == "" {
 		return nil, errors.New("a bucket name must be specified")
 	}
@@ -219,7 +219,7 @@ func (s *badgerSingleDB) GetValue(ctx context.Context, name, bucket string, k []
 	return nil, fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) DeleteValue(ctx context.Context, name, bucket string, k []byte) error {
+func (s *badgerDB) DeleteValue(ctx context.Context, name, bucket string, k []byte) error {
 	if bucket == "" {
 		return errors.New("a bucket name must be specified")
 	}
@@ -237,7 +237,7 @@ func (s *badgerSingleDB) DeleteValue(ctx context.Context, name, bucket string, k
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) DeletePrefix(ctx context.Context, name, bucket string, k []byte, fn ...SelectFn) error {
+func (s *badgerDB) DeletePrefix(ctx context.Context, name, bucket string, k []byte, fn ...SelectFn) error {
 	if bucket == "" {
 		return errors.New("a bucket name must be specified")
 	}
@@ -252,7 +252,7 @@ func (s *badgerSingleDB) DeletePrefix(ctx context.Context, name, bucket string, 
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) GetAll(ctx context.Context, name, bucket string, keysOnly bool, fn ...SelectFn) (chan *KV, error) {
+func (s *badgerDB) GetAll(ctx context.Context, name, bucket string, keysOnly bool, fn ...SelectFn) (chan *KV, error) {
 	if bucket == "" {
 		return nil, errors.New("a bucket name must be specified")
 	}
@@ -272,7 +272,7 @@ func (s *badgerSingleDB) GetAll(ctx context.Context, name, bucket string, keysOn
 	return nil, fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte, fn ...SelectFn) (chan *KV, error) {
+func (s *badgerDB) GetPrefix(ctx context.Context, name, bucket string, prefix, pattern []byte, fn ...SelectFn) (chan *KV, error) {
 	if bucket == "" {
 		return nil, errors.New("a bucket name must be specified")
 	}
@@ -332,7 +332,7 @@ func (s *badgerSingleDB) GetPrefix(ctx context.Context, name, bucket string, pre
 	return nil, fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) GetN(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error) {
+func (s *badgerDB) GetN(ctx context.Context, name, bucket string, n uint64, fn ...SelectFn) ([]*KV, error) {
 	if bucket == "" {
 		return nil, errors.New("a bucket name must be specified")
 	}
@@ -382,7 +382,7 @@ func (s *badgerSingleDB) GetN(ctx context.Context, name, bucket string, n uint64
 	return nil, fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) GetBatch(ctx context.Context, name, bucket string, keys [][]byte, fn ...SelectFn) (chan *KV, error) {
+func (s *badgerDB) GetBatch(ctx context.Context, name, bucket string, keys [][]byte, fn ...SelectFn) (chan *KV, error) {
 	if bucket == "" {
 		return nil, errors.New("a bucket name must be specified")
 	}
@@ -398,7 +398,7 @@ func (s *badgerSingleDB) GetBatch(ctx context.Context, name, bucket string, keys
 	return nil, fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) Txn(ctx context.Context, name, bucket string, txnOpts *TxnOpts) error {
+func (s *badgerDB) Txn(ctx context.Context, name, bucket string, txnOpts *TxnOpts) error {
 	if bucket == "" {
 		return errors.New("a bucket name must be specified")
 	}
@@ -449,7 +449,7 @@ func (s *badgerSingleDB) Txn(ctx context.Context, name, bucket string, txnOpts *
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) Watch(ctx context.Context, name, bucket string, prefixes [][]byte) (chan *KV, error) {
+func (s *badgerDB) Watch(ctx context.Context, name, bucket string, prefixes [][]byte) (chan *KV, error) {
 	if bucket == "" {
 		return nil, errors.New("a bucket name must be specified")
 	}
@@ -498,24 +498,24 @@ func (s *badgerSingleDB) Watch(ctx context.Context, name, bucket string, prefixe
 	return nil, fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) Close() error {
+func (s *badgerDB) Close() error {
 	s.cfn()
 	s.db.Close()
 	return nil
 }
 
-func (s *badgerSingleDB) Stats(ctx context.Context, name string) (*StoreStats, error) {
+func (s *badgerDB) Stats(ctx context.Context, name string) (*StoreStats, error) {
 	return nil, nil
 }
 
-func (s *badgerSingleDB) Clear(ctx context.Context, name string) error {
+func (s *badgerDB) Clear(ctx context.Context, name string) error {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
 	return s.clear(ctx, name)
 }
 
-func (s *badgerSingleDB) Prune(ctx context.Context, name, bucket string, pruneIndex uint8) error {
+func (s *badgerDB) Prune(ctx context.Context, name, bucket string, pruneIndex uint8) error {
 	if bucket == "" {
 		return errors.New("a bucket name must be specified")
 	}
@@ -562,7 +562,7 @@ func (s *badgerSingleDB) Prune(ctx context.Context, name, bucket string, pruneIn
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) SetPruneIndex(ctx context.Context, name string, pruneIndex uint8) error {
+func (s *badgerDB) SetPruneIndex(ctx context.Context, name string, pruneIndex uint8) error {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -579,7 +579,7 @@ func (s *badgerSingleDB) SetPruneIndex(ctx context.Context, name string, pruneIn
 	return fmt.Errorf("unknown cache name %s", name)
 }
 
-func (s *badgerSingleDB) GetPruneIndex(ctx context.Context, name string) (uint8, error) {
+func (s *badgerDB) GetPruneIndex(ctx context.Context, name string) (uint8, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -615,7 +615,7 @@ func (s *badgerSingleDB) GetPruneIndex(ctx context.Context, name string) (uint8,
 
 // helpers
 
-func (s *badgerSingleDB) openDB(ctx context.Context) (*badger.DB, error) {
+func (s *badgerDB) openDB(ctx context.Context) (*badger.DB, error) {
 	opts := badger.DefaultOptions(s.path).
 		WithLoggingLevel(badger.WARNING).
 		WithCompression(options.None).
@@ -646,7 +646,7 @@ func (s *badgerSingleDB) openDB(ctx context.Context) (*badger.DB, error) {
 	return bdb, nil
 }
 
-func (s *badgerSingleDB) deleteKeys(keys [][]byte) error {
+func (s *badgerDB) deleteKeys(keys [][]byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		for _, key := range keys {
 			if err := txn.Delete(key); err != nil {
@@ -657,7 +657,7 @@ func (s *badgerSingleDB) deleteKeys(keys [][]byte) error {
 	})
 }
 
-func (s *badgerSingleDB) nextAvailableKey() uint16 {
+func (s *badgerDB) nextAvailableKey() uint16 {
 	for i := uint16(0); i < ^uint16(0); i++ { // ^uint16(0) gives the maximum value of uint16
 		if _, exists := s.cacheNames[i]; !exists {
 			return i
@@ -666,7 +666,7 @@ func (s *badgerSingleDB) nextAvailableKey() uint16 {
 	return ^uint16(0)
 }
 
-func (s *badgerSingleDB) writeCacheIndex(ctx context.Context, index uint16, name string, pruneIndex uint8) error {
+func (s *badgerDB) writeCacheIndex(ctx context.Context, index uint16, name string, pruneIndex uint8) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		mk := make([]byte, 0, 3)
 		mk = append(mk, metaPrefix)
@@ -677,7 +677,7 @@ func (s *badgerSingleDB) writeCacheIndex(ctx context.Context, index uint16, name
 	})
 }
 
-func (s *badgerSingleDB) clear(ctx context.Context, name string) error {
+func (s *badgerDB) clear(ctx context.Context, name string) error {
 	if index, ok := s.cacheIndexes[name]; ok {
 		return s.db.Update(func(txn *badger.Txn) error {
 			fk := make([]byte, 1, 3)
@@ -711,7 +711,7 @@ func (s *badgerSingleDB) clear(ctx context.Context, name string) error {
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerSingleDB) deleteCacheIndex(ctx context.Context, index uint16) error {
+func (s *badgerDB) deleteCacheIndex(ctx context.Context, index uint16) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		mk := make([]byte, 0, 3)
 		mk = append(mk, metaPrefix)
@@ -734,7 +734,7 @@ func (s *badgerSingleDB) deleteCacheIndex(ctx context.Context, index uint16) err
 	})
 }
 
-func (s *badgerSingleDB) deletePrefixSingleFn(bucket string, index uint16, k []byte, fn ...SelectFn) func(txn *badger.Txn) error {
+func (s *badgerDB) deletePrefixSingleFn(bucket string, index uint16, k []byte, fn ...SelectFn) func(txn *badger.Txn) error {
 	return func(txn *badger.Txn) error {
 		fk := buildFullKey(bucket, index, k)
 		opts := badger.DefaultIteratorOptions
@@ -770,7 +770,7 @@ func (s *badgerSingleDB) deletePrefixSingleFn(bucket string, index uint16, k []b
 	}
 }
 
-func (s *badgerSingleDB) getAll(ctx context.Context, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) {
+func (s *badgerDB) getAll(ctx context.Context, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) {
 	defer close(kvCh)
 	fk := buildFullKey(bucket, index, nil)
 	stream := s.db.NewStream()
@@ -804,7 +804,7 @@ func (s *badgerSingleDB) getAll(ctx context.Context, bucket string, index uint16
 	}
 }
 
-func (s *badgerSingleDB) getAllKeysOnly(ctx context.Context, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) {
+func (s *badgerDB) getAllKeysOnly(ctx context.Context, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) {
 	defer close(kvCh)
 	fk := buildFullKey(bucket, index, nil)
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -834,7 +834,7 @@ func (s *badgerSingleDB) getAllKeysOnly(ctx context.Context, bucket string, inde
 	}
 }
 
-func (s *badgerSingleDB) getBatch(ctx context.Context, bucket string, index uint16, keys [][]byte, kvCh chan *KV, fn ...SelectFn) {
+func (s *badgerDB) getBatch(ctx context.Context, bucket string, index uint16, keys [][]byte, kvCh chan *KV, fn ...SelectFn) {
 	defer close(kvCh)
 
 	var err error
@@ -884,7 +884,7 @@ func (s *badgerSingleDB) getBatch(ctx context.Context, bucket string, index uint
 }
 
 // config/state stores batch fn
-func (s *badgerSingleDB) getBatchFromConfigStateStore(ctx context.Context, keys [][]byte, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) func(tx *badger.Txn) error {
+func (s *badgerDB) getBatchFromConfigStateStore(ctx context.Context, keys [][]byte, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) func(tx *badger.Txn) error {
 	return func(tx *badger.Txn) error {
 		for _, k := range keys {
 			err := getBatchFromConfigStateSingleKey(ctx, tx, k, bucket, index, kvCh, fn...)
@@ -943,7 +943,7 @@ OUTER:
 }
 
 // intended store batch fn
-func (s *badgerSingleDB) getBatchFromIntendedStore(ctx context.Context, keys [][]byte, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) func(tx *badger.Txn) error {
+func (s *badgerDB) getBatchFromIntendedStore(ctx context.Context, keys [][]byte, bucket string, index uint16, kvCh chan *KV, fn ...SelectFn) func(tx *badger.Txn) error {
 	return func(tx *badger.Txn) error {
 		for _, k := range keys {
 			err := getBatchIntendedSingleKey(ctx, tx, k, bucket, index, kvCh, fn...)
