@@ -55,5 +55,5 @@ jobs:
           version: latest
           args: release --clean -f .goreleaser.nightlies.yml
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.IPTECHARCH_GITHUB_PAT }}
           SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }}

@@ -136,7 +136,7 @@ message ReadRequest{
     string                  name            = 2;
     // paths
     repeated Path           path            = 3;
-    // store type: config, state, intended, metadata
+    // store type: config, state, intended, intents
     Store                   store           = 4;
     // read period in nano seconds, if > 0
     // this read becomes a sample subscription
@@ -151,7 +151,7 @@ message ReadRequest{
     // many "highest" priorities we want to read.
     uint64                  priority_count  = 8;
     // return keys only, used for reading raw intents
-    // from the metadata store
+    // from the intents store
     bool                    keys_only       = 9;
 }
 message ReadResponse{
@@ -234,7 +234,7 @@ enum Store {
     CONFIG      = 0;
     STATE       = 1;
     INTENDED    = 2;
-    METADATA    = 3;
+    INTENTS     = 3;
 }
 
 message InstanceStats {

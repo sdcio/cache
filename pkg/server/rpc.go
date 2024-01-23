@@ -301,7 +301,7 @@ func (s *Server) read(req *cachepb.ReadRequest, stream cachepb.Cache_ReadServer)
 	ctx := stream.Context()
 	var ch chan *cache.Entry
 	var err error
-	
+
 	paths := make([][]string, 0, len(req.GetPath()))
 	for _, pp := range req.GetPath() {
 		paths = append(paths, pp.GetElem())
@@ -436,7 +436,7 @@ func getCacheStore(pbStore cachepb.Store) cache.Store {
 		return cache.StoreState
 	case cachepb.Store_INTENDED:
 		return cache.StoreIntended
-	case cachepb.Store_METADATA:
-		return cache.StoreMetadata
+	case cachepb.Store_INTENTS:
+		return cache.StoreIntents
 	}
 }

@@ -28,12 +28,18 @@ bin/cachectl get -n target2
 bin/cachectl modify -n target1 --update a,b,c1:::string:::1 --update a,b,c2:::string:::2
 bin/cachectl modify -n target1 --update a,b,c3:::string:::3
 bin/cachectl modify -n target1 --update a,b,c4:::string:::4
+## read prefix
 bin/cachectl read -n target1 -p a,b --format flat
+## read single path
 bin/cachectl read -n target1 -p a,b,c1 --format flat
 bin/cachectl read -n target1 -p a,b,c2 --format flat
 bin/cachectl read -n target1 -p a,b,c3 --format flat
 bin/cachectl read -n target1 -p a,b,c4 --format flat 
+## read multiple paths
 bin/cachectl read -n target1 -p a,b,c1 -p a,b,c2 -p a,b,c3 -p a,b,c4 --format flat
+## read prefix and path (duplicated responses)
+bin/cachectl read -n target1 -p a,b -p a,b,c2 -p a,b,c3 -p a,b,c4 --format flat
+
 # write, delete and read from candidate
 bin/cachectl modify -n target1/cl1 --update a,b,c2:::string:::42
 bin/cachectl read -n target1/cl1 -p a,b,c1 --format flat
@@ -44,8 +50,8 @@ bin/cachectl read -n target1/cl1 -p a,b
 bin/cachectl read -n target1 -p a,b # leaf c1 is still in main
 # delete value
 bin/cachectl modify -n target1 --delete a,b,c1
-bin/cachectl read -n target1 -p a,b
-bin/cachectl read -n target1/cl1 -p a,b # a,b,c1 is also deleted from candidate
+bin/cachectl read -n target1 -p a,b --format flat
+bin/cachectl read -n target1/cl1 -p a,b --format flat # a,b,c1 is also deleted from candidate
 # changes and discard
 bin/cachectl get-changes -n target1 --candidate cl1
 bin/cachectl discard -n target1 --candidate cl1
@@ -88,15 +94,14 @@ bin/cachectl modify -n target1 -s intended --update a,b,c3:::string:::33 --owner
 bin/cachectl modify -n target1 -s intended --update a,b,c4:::string:::43 --owner me3 --priority 98
 
 bin/cachectl read -n target1 -s intended -p a,b,c1 --owner me --priority 100 --format flat
-
 bin/cachectl read -n target1 -s intended -p a,b,c2 --owner me --priority 100 --format flat
 bin/cachectl read -n target1 -s intended -p a,b,c3 --owner me --priority 100 --format flat
 bin/cachectl read -n target1 -s intended -p a,b,c4 --owner me --priority 100 --format flat
 
-bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat
-bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priotity-count 2
-bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priotity-count 3
-bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priotity-count 10
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat #--priority-count 1
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priority-count 2
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priority-count 3
+bin/cachectl read -n target1 -s intended -p a,b,c1 --format flat --priority-count 10
 ```
 
 ## benchmark against the lab in labs/single

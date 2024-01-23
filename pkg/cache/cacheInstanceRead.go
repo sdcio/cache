@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"sync"
 
@@ -35,28 +35,28 @@ func (ci *cacheInstance) readValueCh(ctx context.Context, cname string, ro *Opts
 		}
 		go func() {
 			err = ci.readFromConfigStore(ctx, cand, ro, rsCh)
-			if err != nil {
+			if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
 				log.Errorf("failed to run query from store: %v", err)
 			}
 		}()
 	case StoreState:
 		go func() {
 			err = ci.readFromStateStore(ctx, ro, rsCh)
-			if err != nil {
+			if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
 				log.Errorf("failed to run query from store: %v", err)
 			}
 		}()
 	case StoreIntended:
 		go func() {
 			err = ci.readFromIntendedStore(ctx, ro, rsCh)
-			if err != nil {
+			if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
 				log.Errorf("failed to run query from store: %v", err)
 			}
 		}()
-	case StoreMetadata:
+	case StoreIntents:
 		go func() {
-			err = ci.readFromMetadataStore(ctx, ro, rsCh)
-			if err != nil {
+			err = ci.readFromIntentsStore(ctx, ro, rsCh)
+			if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
 				log.Errorf("failed to run query from store: %v", err)
 			}
 		}()
@@ -169,11 +169,10 @@ func (ci *cacheInstance) readFromIntendedStore(ctx context.Context, ro *Opts, rs
 	}
 }
 
-func (ci *cacheInstance) readFromMetadataStore(ctx context.Context, ro *Opts, rsCh chan *Entry) error {
+func (ci *cacheInstance) readFromIntentsStore(ctx context.Context, ro *Opts, rsCh chan *Entry) error {
 	defer close(rsCh)
 	for _, p := range ro.Path {
-		prefix, _, _ := pathToPrefixPattern(p)
-		err := ci.readFromMetadataStoreCh(ctx, []byte(prefix), ro.KeysOnly, rsCh)
+		err := ci.readFromIntentsStoreCh(ctx, []byte(strings.Join(p, delimStr)), ro.KeysOnly, rsCh)
 		if err != nil {
 			return err
 		}
@@ -278,11 +277,11 @@ func (ci *cacheInstance) readValueFromIntendedStoreHighPrioCh(ctx context.Contex
 	return e, err
 }
 
-func (ci *cacheInstance) readFromMetadataStoreCh(ctx context.Context, key []byte, keysOnly bool, kvCh chan *Entry) error {
+func (ci *cacheInstance) readFromIntentsStoreCh(ctx context.Context, key []byte, keysOnly bool, kvCh chan *Entry) error {
 	if keysOnly {
-		return ci.readFromMetadataStoreKeysOnlyCh(ctx, key, kvCh)
+		return ci.readFromIntentsStoreKeysOnlyCh(ctx, kvCh)
 	}
-	var bucket = "metadata"
+	var bucket = "intents"
 	v, err := ci.store.GetValue(ctx, ci.cfg.Name, bucket, key)
 	if err != nil {
 		return err
@@ -298,8 +297,8 @@ func (ci *cacheInstance) readFromMetadataStoreCh(ctx context.Context, key []byte
 	return nil
 }
 
-func (ci *cacheInstance) readFromMetadataStoreKeysOnlyCh(ctx context.Context, key []byte, kvCh chan *Entry) error {
-	var bucket = "metadata"
+func (ci *cacheInstance) readFromIntentsStoreKeysOnlyCh(ctx context.Context, kvCh chan *Entry) error {
+	var bucket = "intents"
 	sCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, true)
 	if err != nil {
 		return err
@@ -317,26 +316,6 @@ func (ci *cacheInstance) readFromMetadataStoreKeysOnlyCh(ctx context.Context, ke
 			}
 		}
 	}
-}
-
-func pathToPrefixPattern(path []string) (string, string, error) {
-	for i := range path {
-		if path[i] == "*" {
-			path[i] = ".*"
-		}
-	}
-	fp := strings.Join(path, delimStr)
-	re, err := regexp.Compile(fp)
-	if err != nil {
-		return "", "", err
-	}
-	prefix, all := re.LiteralPrefix()
-	if all {
-		return prefix, "", nil
-	}
-	pattern := strings.TrimPrefix(fp, prefix)
-	prefix = strings.TrimSuffix(prefix, delimStr)
-	return prefix, pattern, nil
 }
 
 func kvToEntry(v *store.KV, bucket string) (*Entry, error) {
