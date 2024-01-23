@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -15,15 +16,25 @@ import (
 	"github.com/iptecharch/cache/pkg/server"
 )
 
+var version = "dev"
+var commit string
+
 var configFile string
 var debug bool
 var trace bool
+var versionFlag bool
 
 func main() {
 	pflag.StringVarP(&configFile, "config", "c", "cache.yaml", "config file path")
 	pflag.BoolVarP(&debug, "debug", "d", false, "set log level to DEBUG")
 	pflag.BoolVarP(&trace, "trace", "t", false, "set log level to TRACE")
+	pflag.BoolVarP(&versionFlag, "version", "v", false, "print version")
 	pflag.Parse()
+
+	if versionFlag {
+		fmt.Println(version + "-" + commit)
+		return
+	}
 
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 	log.SetLevel(log.InfoLevel)
