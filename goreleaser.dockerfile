@@ -17,14 +17,14 @@ FROM scratch
 # add-in our timezone data file
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 # add-in our nologin binary
-COPY --from-builder /usr/sbin/nologin /usr/sbin/nologin
+COPY --from=builder /usr/sbin/nologin /usr/sbin/nologin
 # add-in our unprivileged user
 COPY --from=builder /etc/passwd /etc/group /etc/shadow /etc/
 # add-in our ca certificates
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-COPY cache /app/
-COPY cachectl /app/
+COPY --chown=1000:1000 cache /app/
+COPY --chown=1000:1000 cachectl /app/
 WORKDIR /app
 
 # from now on, run as the unprivileged user
