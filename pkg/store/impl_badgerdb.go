@@ -141,7 +141,13 @@ func (s *badgerDB) DeleteCache(ctx context.Context, name string) error {
 
 		delete(s.cacheIndexes, name)
 		delete(s.cacheNames, index)
-		return nil
+
+		cib := cacheIndexKey(index)
+		prefixes := make([][]byte, 0, 4)
+		for _, s := range []byte{configPrefix, statePrefix, intendedPrefix, intentsPrefix} {
+			prefixes = append(prefixes, []byte{s, cib[0], cib[1]})
+		}
+		return s.db.DropPrefix(prefixes...)
 	}
 	return fmt.Errorf("cache %q does not exist", name)
 }

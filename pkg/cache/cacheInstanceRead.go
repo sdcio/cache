@@ -331,30 +331,55 @@ func kvToEntry(v *store.KV, bucket string) (*Entry, error) {
 	return nil, fmt.Errorf("unknown bucket name %q", bucket)
 }
 
+// Intended store key format
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
+// | Variable Length Path Elements   			| 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
+// | (Comma Separated and ending with a comma)	| Priority     | Owner       | Owner Length    | Timestamp    |
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
 func buildIntendedStoreReadeKey(path []string, priority int32, owner string) []byte {
-	// ignore owner if the priority is 0
-	if priority == 0 {
-		owner = ""
-	}
-	path = append(path, owner)
-	k := []byte(strings.Join(path, delimStr))
+	joinedPath := strings.Join(path, delimStr) + delimStr
+	pathLength := len(joinedPath)
+
 	if priority <= 0 {
-		return k // trying to read all priorities
+		return []byte(joinedPath)
 	}
 
-	priob := make([]byte, 4)
-	binary.BigEndian.PutUint32(priob, uint32(priority))
+	ownerLength := len(owner)
+	totalLength := pathLength + 4
 
-	k = append(k, priob...)
+	if owner != "" {
+		totalLength += 2 + ownerLength
+	}
+
+	k := make([]byte, totalLength)
+
+	copy(k, joinedPath)
+
+	offset := pathLength
+	binary.BigEndian.PutUint32(k[offset:], uint32(priority))
+	offset += 4
+
+	if owner != "" {
+		copy(k[offset:offset+ownerLength], owner)
+		offset += ownerLength
+
+		binary.BigEndian.PutUint16(k[offset:], uint16(ownerLength))
+	}
+
 	return k
 }
 
+// this function assumes GetBatch goes through the priorities in ascending order
+// for a given path, which is true as long as I don't mess up the key format again.
 func highestPrioritiesSelectFn(priorityCount int32) store.SelectFn {
 	// This mutex and map are used
 	// to keep track of the number of
-	// encountered values per key (i.e path).
+	// encountered values per key (i.e path) per priority.
 	m := new(sync.Mutex)
-	readPaths := make(map[string]int32)
+	// we could use map[string]map[int32]struct{} instead of map[string]map[int32]int32.
+	// In a future optimization the last int32 value can be used to limit
+	// the number of intents per priority.
+	readPaths := make(map[string]map[int32]int32)
 
 	return func(k []byte) bool {
 		e, err := parseIntendedStoreKey(k, nil)
@@ -366,48 +391,63 @@ func highestPrioritiesSelectFn(priorityCount int32) store.SelectFn {
 		// lock readPaths map
 		m.Lock()
 		defer m.Unlock()
-		// if the key was read before
-		// check if we reached priorityCount for this key.
-		if count, ok := readPaths[path]; ok {
-			// check how many priorities where read
-			if count >= priorityCount {
-				// if the priorityCount was reached, skip it.
-				return false
-			}
-			// else: increment the count and return true
-			readPaths[path]++
+
+		// unknown path: add it and return true
+		if _, ok := readPaths[path]; !ok {
+			readPaths[path] = map[int32]int32{e.Priority: 1}
 			return true
 		}
-		// if the key is encountered for the first time,
-		// add the count item to the map and
-		// return true
-		readPaths[path] = 1
+		// known path, unknown priority:
+		if _, ok := readPaths[path][e.Priority]; !ok {
+			// check priority count
+			if len(readPaths[path]) >= int(priorityCount) {
+				return false // we have enough priorities
+			}
+			// add it and return true
+			readPaths[path][e.Priority] = 1
+			return true
+		}
+		// known path, known priority
+		readPaths[path][e.Priority]++
 		return true
 	}
 }
 
+// Intended store key format
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
+// | Variable Length Path Elements   			| 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
+// | (Comma Separated and ending with a comma)	| Priority     | Owner       | Owner Length    | Timestamp    |
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
+
 func parseIntendedStoreKey(k, v []byte) (*Entry, error) {
 	lkey := len(k)
-	if lkey < 4+8 {
-		return nil, fmt.Errorf("key too short(<12): %x", k)
+	// min: 1 byte path, 4 bytes priority, 1 byte owner, 2 bytes owner length, 8 bytes timestamp
+	if lkey < 16 {
+		return nil, fmt.Errorf("intended store key too short(<16): %x", k)
 	}
-	// timestamp is the last 8 bytes
+
+	// extract timestamp, owner length, owner, and priority
 	ts := k[lkey-8:]
-	// priority is the 4 bytes before the timestamp
-	pr := k[lkey-12 : lkey-8]
-	// the key items are the path elements + the owner
-	keyItems := bytes.Split(k[:lkey-12], delimBytes)
-	numItems := len(keyItems)
+	lOwner := binary.BigEndian.Uint16(k[lkey-10 : lkey-8])
+	owner := string(k[lkey-10-int(lOwner) : lkey-10])
+	pr := k[lkey-10-int(lOwner)-4 : lkey-10-int(lOwner)]
+
+	// split the path elements
+	pathEnd := lkey - 10 - int(lOwner) - 4
+	keyItems := bytes.Split(k[:pathEnd], delimBytes)
+
 	e := &Entry{
 		Timestamp: binary.BigEndian.Uint64(ts),
-		Owner:     string(keyItems[numItems-1]), // owner is the last path elem
+		Owner:     owner,
 		Priority:  int32(binary.BigEndian.Uint32(pr)),
-		P:         make([]string, 0, numItems-1),
+		P:         make([]string, len(keyItems)-1),
 		V:         v,
 	}
-	// add the path elements to the entry to be returned
-	for _, ki := range keyItems[:numItems-1] {
-		e.P = append(e.P, string(ki))
+
+	// copy the path elements into the entry
+	for i, ki := range keyItems[:len(keyItems)-1] {
+		e.P[i] = string(ki)
 	}
+
 	return e, nil
 }
