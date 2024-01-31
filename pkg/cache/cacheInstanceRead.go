@@ -332,10 +332,10 @@ func kvToEntry(v *store.KV, bucket string) (*Entry, error) {
 }
 
 // Intended store key format
-// +---------------------------------+--------------+-------------+-----------------+--------------+
-// | Variable Length Path Elements   | 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
-// | (Comma Separated)               | Priority     | Owner       | Owner Length    | Timestamp    |
-// +---------------------------------+--------------+-------------+-----------------+--------------+
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
+// | Variable Length Path Elements   			| 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
+// | (Comma Separated and ending with a comma)	| Priority     | Owner       | Owner Length    | Timestamp    |
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
 func buildIntendedStoreReadeKey(path []string, priority int32, owner string) []byte {
 	joinedPath := strings.Join(path, delimStr) + delimStr
 	pathLength := len(joinedPath)
@@ -414,46 +414,40 @@ func highestPrioritiesSelectFn(priorityCount int32) store.SelectFn {
 }
 
 // Intended store key format
-// +---------------------------------+--------------+-------------+-----------------+--------------+
-// | Variable Length Path Elements   | 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
-// | (Comma Separated)               | Priority     | Owner       | Owner Length    | Timestamp    |
-// +---------------------------------+--------------+-------------+-----------------+--------------+
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
+// | Variable Length Path Elements   			| 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
+// | (Comma Separated and ending with a comma)	| Priority     | Owner       | Owner Length    | Timestamp    |
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
 
 func parseIntendedStoreKey(k, v []byte) (*Entry, error) {
 	lkey := len(k)
-	if lkey < 1+4+1+2+8 { // 1 byte path, priority, 1 byte owner, owner length, timestamp
-		return nil, fmt.Errorf("intended store key too short(<18): %x", k)
+	// min: 1 byte path, 4 bytes priority, 1 byte owner, 2 bytes owner length, 8 bytes timestamp
+	if lkey < 16 {
+		return nil, fmt.Errorf("intended store key too short(<16): %x", k)
 	}
-	log.Debugf("parsing key1: %x", k)
-	// timestamp is the last 8 bytes
+
+	// extract timestamp, owner length, owner, and priority
 	ts := k[lkey-8:]
-	log.Debugf("parsing key2: %x | %x", k[:lkey-8], ts)
-	// the 2 bytes before ts are the length of the owner
 	lOwner := binary.BigEndian.Uint16(k[lkey-10 : lkey-8])
-	log.Debugf("parsing key3: %x | %d | %x", k[:lkey-10], lOwner, ts)
-
 	owner := string(k[lkey-10-int(lOwner) : lkey-10])
-	log.Debugf("parsing key4: %x | %s | %d | %x", k[:lkey-10], owner, lOwner, ts)
-
-	// priority is the 4 bytes before the owner.
 	pr := k[lkey-10-int(lOwner)-4 : lkey-10-int(lOwner)]
-	log.Debugf("parsing key5: %x | %x | %d | %s | %d | %x", k[:lkey-10], pr, lOwner, owner, lOwner, ts)
 
-	// the remaining bytes are the comma separated path elems ending with a comma.
-	keyItems := bytes.Split(k[:lkey-10-int(lOwner)-4], delimBytes)
-	numItems := len(keyItems)
+	// split the path elements
+	pathEnd := lkey - 10 - int(lOwner) - 4
+	keyItems := bytes.Split(k[:pathEnd], delimBytes)
 
 	e := &Entry{
 		Timestamp: binary.BigEndian.Uint64(ts),
 		Owner:     owner,
 		Priority:  int32(binary.BigEndian.Uint32(pr)),
-		P:         make([]string, 0, numItems-1),
+		P:         make([]string, len(keyItems)-1),
 		V:         v,
 	}
-	// add the path elements to the entry to be returned
-	for _, ki := range keyItems[:numItems-1] {
-		e.P = append(e.P, string(ki))
+
+	// copy the path elements into the entry
+	for i, ki := range keyItems[:len(keyItems)-1] {
+		e.P[i] = string(ki)
 	}
-	log.Debugf("parsing key6: %v | %x | %s | %d | %x", e.P, pr, owner, lOwner, ts)
+
 	return e, nil
 }

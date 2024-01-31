@@ -225,10 +225,10 @@ func (ci *cacheInstance) deletePrefixIntents(ctx context.Context, wo *Opts) erro
 // Intended store key format
 // this key is parsed right to left.
 // having the path at the beginning allows for fast path queries.
-// +---------------------------------+--------------+-------------+-----------------+--------------+
-// | Variable Length Path Elements   | 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
-// | (Comma Separated)               | Priority     | Owner       | Owner Length    | Timestamp    |
-// +---------------------------------+--------------+-------------+-----------------+--------------+
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
+// | Variable Length Path Elements   			| 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
+// | (Comma Separated and ending with a comma)	| Priority     | Owner       | Owner Length    | Timestamp    |
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
 func buildIntendedStoreWriteKey(path []string, priority int32, owner string) []byte {
 	joinedPath := strings.Join(path, delimStr) + delimStr
 	pathLength := len(joinedPath)
