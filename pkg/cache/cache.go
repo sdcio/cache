@@ -67,8 +67,7 @@ type Cache interface {
 	Close() error
 	// Commit candidate into the intended store
 	Commit(ctx context.Context, name, candidate string) error
-	// Stats
-	Stats(ctx context.Context, name string, withKeysCount bool) (*StatsResponse, error)
+
 	Clear(ctx context.Context, name string) error
 	NumInstances() int
 	Watch(ctx context.Context, name string, store Store, prefixes [][]string) (chan *Entry, error)

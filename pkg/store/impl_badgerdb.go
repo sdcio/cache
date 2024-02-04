@@ -510,10 +510,6 @@ func (s *badgerDB) Close() error {
 	return nil
 }
 
-func (s *badgerDB) Stats(ctx context.Context, name string) (*StoreStats, error) {
-	return nil, nil
-}
-
 func (s *badgerDB) Clear(ctx context.Context, name string) error {
 	s.m.RLock()
 	defer s.m.RUnlock()

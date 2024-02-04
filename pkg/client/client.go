@@ -280,15 +280,6 @@ func (c *Client) Discard(ctx context.Context, name, candidate string, opts ...gr
 	return err
 }
 
-func (c *Client) Stats(ctx context.Context, name string, withKeyCount bool, opts ...grpc.CallOption) (*cachepb.StatsResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
-	defer cancel()
-	return c.client.Stats(ctx, &cachepb.StatsRequest{
-		Name:      name,
-		KeysCount: withKeyCount,
-	}, opts...)
-}
-
 func (c *Client) Watch(ctx context.Context, name string, store cache.Store, prefixes [][]string, opts ...grpc.CallOption) (chan *cachepb.WatchResponse, error) {
 	var cStore cachepb.Store
 	switch store {
