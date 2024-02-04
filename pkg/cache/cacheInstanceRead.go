@@ -260,12 +260,12 @@ func (ci *cacheInstance) readValueFromIntendedStoreHighPrioCh(ctx context.Contex
 	kvs, err := ci.store.GetN(ctx, ci.cfg.Name, bucket, 1,
 		func(k []byte) bool {
 			lk := len(k)
-			// must include priority and TS
-			if lk < 4+8 {
+			// must include priority, owner length, owner and  TS
+			if lk < 4+1+2+8 {
 				return false
 			}
 			// check for prefix
-			return bytes.HasPrefix(k[4:lk-8], p)
+			return bytes.HasPrefix(k[:lk-10], p)
 		})
 	if err != nil {
 		return nil, err

@@ -34,8 +34,6 @@ type Store interface {
 
 	Close() error
 	Clear(ctx context.Context, name string) error
-
-	Stats(ctx context.Context, name string) (*StoreStats, error)
 }
 
 type SelectFn func(k []byte) bool

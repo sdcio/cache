@@ -8,7 +8,6 @@ package cachepb
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -49,8 +48,6 @@ type CacheClient interface {
 	Discard(ctx context.Context, in *DiscardRequest, opts ...grpc.CallOption) (*DiscardResponse, error)
 	// Commit writes a candidate changes into the intended store
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error)
-	// Stats requests statistics from the cache server
-	Stats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error)
 	// Clear wipes a cache
 	Clear(ctx context.Context, in *ClearRequest, opts ...grpc.CallOption) (*ClearResponse, error)
 	// Watch
@@ -253,15 +250,6 @@ func (c *cacheClient) Commit(ctx context.Context, in *CommitRequest, opts ...grp
 	return out, nil
 }
 
-func (c *cacheClient) Stats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error) {
-	out := new(StatsResponse)
-	err := c.cc.Invoke(ctx, "/cache.proto.Cache/Stats", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *cacheClient) Clear(ctx context.Context, in *ClearRequest, opts ...grpc.CallOption) (*ClearResponse, error) {
 	out := new(ClearResponse)
 	err := c.cc.Invoke(ctx, "/cache.proto.Cache/Clear", in, out, opts...)
@@ -333,8 +321,6 @@ type CacheServer interface {
 	Discard(context.Context, *DiscardRequest) (*DiscardResponse, error)
 	// Commit writes a candidate changes into the intended store
 	Commit(context.Context, *CommitRequest) (*CommitResponse, error)
-	// Stats requests statistics from the cache server
-	Stats(context.Context, *StatsRequest) (*StatsResponse, error)
 	// Clear wipes a cache
 	Clear(context.Context, *ClearRequest) (*ClearResponse, error)
 	// Watch
@@ -384,9 +370,6 @@ func (UnimplementedCacheServer) Discard(context.Context, *DiscardRequest) (*Disc
 }
 func (UnimplementedCacheServer) Commit(context.Context, *CommitRequest) (*CommitResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Commit not implemented")
-}
-func (UnimplementedCacheServer) Stats(context.Context, *StatsRequest) (*StatsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Stats not implemented")
 }
 func (UnimplementedCacheServer) Clear(context.Context, *ClearRequest) (*ClearResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Clear not implemented")
@@ -655,24 +638,6 @@ func _Cache_Commit_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Cache_Stats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(StatsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CacheServer).Stats(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/cache.proto.Cache/Stats",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CacheServer).Stats(ctx, req.(*StatsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Cache_Clear_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ClearRequest)
 	if err := dec(in); err != nil {
@@ -758,10 +723,6 @@ var Cache_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Commit",
 			Handler:    _Cache_Commit_Handler,
-		},
-		{
-			MethodName: "Stats",
-			Handler:    _Cache_Stats_Handler,
 		},
 		{
 			MethodName: "Clear",

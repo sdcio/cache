@@ -33,8 +33,6 @@ service Cache {
     rpc Discard(DiscardRequest)                 returns (DiscardResponse);
     // Commit writes a candidate changes into the intended store
     rpc Commit(CommitRequest)                   returns (CommitResponse);
-    // Stats requests statistics from the cache server
-    rpc Stats(StatsRequest)                     returns (StatsResponse);
     // Clear wipes a cache
     rpc Clear(ClearRequest)                     returns (ClearResponse);
     // Watch

@@ -267,24 +267,6 @@ func (s *Server) Commit(ctx context.Context, req *cachepb.CommitRequest) (*cache
 	return &cachepb.CommitResponse{}, nil
 }
 
-func (s *Server) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cachepb.StatsResponse, error) {
-	ss, err := s.cache.Stats(ctx, req.GetName(), req.GetKeysCount())
-	if err != nil {
-		return nil, err
-	}
-	rsp := &cachepb.StatsResponse{
-		NumCache: int64(ss.NumInstances),
-		KeyCount: map[string]*cachepb.InstanceStats{},
-	}
-	for _, ssi := range ss.InstanceStats {
-		rsp.KeyCount[ssi.Name] = &cachepb.InstanceStats{
-			Name:              ssi.Name,
-			KeyCountPerBucket: ssi.KeyCount,
-		}
-	}
-	return rsp, nil
-}
-
 func (s *Server) Watch(req *cachepb.WatchRequest, stream cachepb.Cache_WatchServer) error {
 	ctx := stream.Context()
 	pr, _ := peer.FromContext(ctx)
