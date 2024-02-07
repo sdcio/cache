@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/iptecharch/cache/pkg/client"
+	"github.com/sdcio/cache/pkg/client"
 )
 
 var diffCmd = &cobra.Command{

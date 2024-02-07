@@ -25,8 +25,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iptecharch/cache/pkg/config"
-	"github.com/iptecharch/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/config"
+	"github.com/sdcio/cache/pkg/store"
 )
 
 type cache struct {

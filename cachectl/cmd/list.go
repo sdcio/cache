@@ -20,7 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/iptecharch/cache/pkg/client"
+	"github.com/sdcio/cache/pkg/client"
 )
 
 // listCmd represents the list command

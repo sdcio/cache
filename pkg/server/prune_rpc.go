@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/iptecharch/cache/proto/cachepb"
+	"github.com/sdcio/cache/proto/cachepb"
 )
 
 func (s *Server) Prune(ctx context.Context, req *cachepb.PruneRequest) (*cachepb.PruneResponse, error) {

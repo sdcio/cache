@@ -1,4 +1,4 @@
-module github.com/iptecharch/cache
+module github.com/sdcio/cache
 
 go 1.21
 
@@ -14,8 +14,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.16.0
 	golang.org/x/sync v0.5.0
-	google.golang.org/grpc v1.60.0
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/grpc v1.60.1
+	google.golang.org/protobuf v1.32.0
 	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/controller-runtime v0.16.3
 )
@@ -23,8 +23,8 @@ require (
 require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/dgraph-io/ristretto v0.1.1
-	github.com/iptecharch/sdc-protos v0.0.14
 	github.com/kylelemons/godebug v1.1.0
+	github.com/sdcio/sdc-protos v0.0.22
 )
 
 require (
