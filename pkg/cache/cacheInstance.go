@@ -26,8 +26,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iptecharch/cache/pkg/ctree"
-	"github.com/iptecharch/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/ctree"
+	"github.com/sdcio/cache/pkg/store"
 )
 
 const (

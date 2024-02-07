@@ -23,7 +23,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iptecharch/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/store"
 )
 
 func (ci *cacheInstance) writeValue(ctx context.Context, cname string, wo *Opts, b []byte) error {

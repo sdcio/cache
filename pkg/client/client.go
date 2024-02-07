@@ -24,8 +24,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/iptecharch/cache/pkg/cache"
-	"github.com/iptecharch/cache/proto/cachepb"
+	"github.com/sdcio/cache/pkg/cache"
+	"github.com/sdcio/cache/proto/cachepb"
 )
 
 const (

@@ -27,8 +27,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/iptecharch/cache/pkg/cache"
-	"github.com/iptecharch/cache/proto/cachepb"
+	"github.com/sdcio/cache/pkg/cache"
+	"github.com/sdcio/cache/proto/cachepb"
 )
 
 func (s *Server) Get(ctx context.Context, req *cachepb.GetRequest) (*cachepb.GetResponse, error) {

@@ -18,7 +18,7 @@ topology:
   nodes:
     cache1:
       kind: linux
-      image: registry.kmrd.dev/iptecharch/cache:latest
+      image: registry.kmrd.dev/sdcio/cache:latest
       binds:
         - "./cache.yaml:/app/cache.yaml"
         - ./cached:/cached

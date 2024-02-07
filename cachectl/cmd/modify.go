@@ -18,14 +18,14 @@ import (
 	"fmt"
 	"strings"
 
-	sdcpb "github.com/iptecharch/sdc-protos/sdcpb"
+	sdcpb "github.com/sdcio/sdc-protos/sdcpb"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/iptecharch/cache/pkg/cache"
-	"github.com/iptecharch/cache/pkg/client"
-	"github.com/iptecharch/cache/proto/cachepb"
+	"github.com/sdcio/cache/pkg/cache"
+	"github.com/sdcio/cache/pkg/client"
+	"github.com/sdcio/cache/proto/cachepb"
 )
 
 var updatePaths []string

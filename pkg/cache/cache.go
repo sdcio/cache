@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/iptecharch/cache/pkg/config"
+	"github.com/sdcio/cache/pkg/config"
 )
 
 type Store int8
