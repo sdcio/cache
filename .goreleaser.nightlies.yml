@@ -42,8 +42,8 @@ dockers:
       - cache
       - cachectl
     image_templates:
-      - "ghcr.io/sdcio/cache:v0.0.0-{{ .ShortCommit }}"
-      - "ghcr.io/sdcio/cache:v0.0.0-dev-latest"
+      - "registry.k8s.sdcio.dev/sdcio/cache:v0.0.0-{{ .ShortCommit }}"
+      - "registry.k8s.sdcio.dev/sdcio/cache:v0.0.0-dev-latest"
       - "registry.kmrd.dev/sdcio/cache:v0.0.0-{{ .ShortCommit }}"
       - "registry.kmrd.dev/sdcio/cache:v0.0.0-dev-latest"
     dockerfile: goreleaser.dockerfile
@@ -51,24 +51,6 @@ dockers:
     build_flag_templates:
       - "--pull"
       - "--build-arg=USERID=10000"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.source=https://github.com/sdcio/{{.ProjectName}}"
-      - "--label=org.opencontainers.image.version=v{{.Version}}"
-  - goos: linux
-    goarch: amd64
-    ids:
-      - cache
-      - cachectl
-    image_templates:
-      - "registry.k8s.hans.io/sdcio/cache:v0.0.0-{{ .ShortCommit }}"
-      - "registry.k8s.hans.io/sdcio/cache:v0.0.0-dev-latest"
-    dockerfile: goreleaser.dockerfile
-    skip_push: false
-    push_flags:
-      - --tls-verify=false
-    build_flag_templates:
-      - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.source=https://github.com/sdcio/{{.ProjectName}}"
