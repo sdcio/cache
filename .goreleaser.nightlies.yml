@@ -1,3 +1,17 @@
+# Copyright 2024 Nokia
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 project_name: cache
 builds:
   - id: cache
@@ -5,7 +19,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w 
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
     goos:
       - linux
     goarch:
@@ -28,10 +42,10 @@ dockers:
       - cache
       - cachectl
     image_templates:
-      - "ghcr.io/iptecharch/cache:v0.0.0-{{ .ShortCommit }}"
-      - "ghcr.io/iptecharch/cache:v0.0.0-dev-latest"
-      - "registry.kmrd.dev/iptecharch/cache:v0.0.0-{{ .ShortCommit }}"
-      - "registry.kmrd.dev/iptecharch/cache:v0.0.0-dev-latest"
+      - "ghcr.io/sdcio/cache:v0.0.0-{{ .ShortCommit }}"
+      - "ghcr.io/sdcio/cache:v0.0.0-dev-latest"
+      - "registry.kmrd.dev/sdcio/cache:v0.0.0-{{ .ShortCommit }}"
+      - "registry.kmrd.dev/sdcio/cache:v0.0.0-dev-latest"
     dockerfile: goreleaser.dockerfile
     skip_push: false
     build_flag_templates:
@@ -39,7 +53,7 @@ dockers:
       - "--build-arg=USERID=10000"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.source=https://github.com/iptecharch/{{.ProjectName}}"
+      - "--label=org.opencontainers.image.source=https://github.com/sdcio/{{.ProjectName}}"
       - "--label=org.opencontainers.image.version=v{{.Version}}"
   - goos: linux
     goarch: amd64
@@ -47,8 +61,8 @@ dockers:
       - cache
       - cachectl
     image_templates:
-      - "registry.k8s.hans.io/iptecharch/cache:v0.0.0-{{ .ShortCommit }}"
-      - "registry.k8s.hans.io/iptecharch/cache:v0.0.0-dev-latest"
+      - "registry.k8s.hans.io/sdcio/cache:v0.0.0-{{ .ShortCommit }}"
+      - "registry.k8s.hans.io/sdcio/cache:v0.0.0-dev-latest"
     dockerfile: goreleaser.dockerfile
     skip_push: false
     push_flags:
@@ -57,7 +71,7 @@ dockers:
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.source=https://github.com/iptecharch/{{.ProjectName}}"
+      - "--label=org.opencontainers.image.source=https://github.com/sdcio/{{.ProjectName}}"
       - "--label=org.opencontainers.image.version=v{{.Version}}"
 release:
   disable: true

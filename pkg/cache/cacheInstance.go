@@ -1,3 +1,17 @@
+// Copyright 2024 Nokia
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package cache
 
 import (
@@ -6,15 +20,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iptecharch/cache/pkg/ctree"
-	"github.com/iptecharch/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/ctree"
+	"github.com/sdcio/cache/pkg/store"
 )
 
 const (
@@ -119,9 +132,7 @@ func (ci *cacheInstance) clone(ctx context.Context, cname string) (*cacheInstanc
 		&CacheInstanceConfig{
 			Name:      cname,
 			StoreType: ci.cfg.StoreType,
-			// Ephemeral: ci.cfg.Ephemeral,
-			// Cached:    ci.cfg.Cached,
-			Dir: ci.cfg.Dir,
+			Dir:       ci.cfg.Dir,
 		},
 		ci.store,
 	)
@@ -186,17 +197,17 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 		kvs, err := ci.store.GetN(ctx, ci.cfg.Name, intendedBucketName, 2,
 			func(k []byte) bool {
 				lk := len(k)
-				// must include priority and TS
-				if lk < 4+8 {
+				// must include owner, priority and TS
+				if lk < 4+1+2+8 { // priority + owner + lowner + ts
 					return false
 				}
 				// check for prefix
-				if !bytes.HasPrefix(k[4:lk-8], pb) {
+				if !bytes.HasPrefix(k[:lk-10], pb) {
 					return false
 				}
 				// make sure this is an exact prefix,
 				// next byte should be a ","
-				return lk > 4+lpb && bytes.HasPrefix(k[4+lpb:], []byte(","))
+				return lk > 4+lpb && bytes.HasPrefix(k[lpb:], []byte(","))
 			})
 		if err != nil {
 			return nil, nil, err
@@ -205,35 +216,39 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 		lkvs := len(kvs)
 		switch lkvs {
 		case 0:
+			// does not exist in the intended store
+			dels = append(dels, strings.Split(p, delimStr))
 		case 1:
 			// got a single value from the intended store
-			highP := int32(binary.BigEndian.Uint32(kvs[0].K[:4]))
+			e, err := parseIntendedStoreKey(kvs[0].K, kvs[0].V)
+			if err != nil {
+				return nil, nil, err
+			}
 			switch {
-			case highP == cand.priority:
-				dels = append(dels, strings.Split(p, delimStr))
+			case e.Priority == cand.priority:
+				dels = append(dels, e.P)
+			case e.Priority < cand.priority:
+				// deleting a value, not the highest
 			}
 		case 2:
-			sort.Slice(kvs, func(i, j int) bool {
-				return bytes.Compare(kvs[i].K[:4], kvs[j].K[:4]) < 0
-			})
-
 			for _, kv := range kvs {
-				log.Debugf("%x: %s: %s\n", kv.K[:4], kv.K[4:len(kv.K)-8], kv.V)
+				log.Debugf("%x: %s: %s\n", kv.K, kv.K[:len(kv.K)-8], kv.V)
 			}
-			highP := int32(binary.BigEndian.Uint32(kvs[0].K[:4]))
+			e, err := parseIntendedStoreKey(kvs[0].K, kvs[0].V)
+			if err != nil {
+				return nil, nil, err
+			}
 			switch {
-			case highP == cand.priority:
-				// deleting the highest priority value,
+			case e.Priority == cand.priority:
+				// deleting the highest or priority value,
 				// so set the next priority value.
-				e, err := kvToEntry(kvs[1], intendedBucketName)
+				ne, err := parseIntendedStoreKey(kvs[1].K, kvs[1].V)
 				if err != nil {
 					return nil, nil, err
 				}
-				es = append(es, e)
-			case highP < cand.priority:
+				es = append(es, ne)
+			case e.Priority < cand.priority:
 				// deleting a value, not the highest
-			case highP > cand.priority:
-				// ???
 			}
 		}
 	}
@@ -262,16 +277,32 @@ func (ci *cacheInstance) diff(ctx context.Context, candidate string) ([][]string
 				return err
 			}
 			switch {
-			case e.Priority >= cand.priority:
-				e := &Entry{
+			case e.Priority == cand.priority:
+				// the candidate is changing its own values
+				if e.Owner == cand.owner {
+					ce := &Entry{
+						Timestamp: ts,
+						Owner:     cand.owner,
+						Priority:  cand.priority,
+						P:         make([]string, 0, len(path)),
+						V:         vt,
+					}
+					ce.P = append(ce.P, path...)
+					es = append(es, ce)
+				} else {
+					// other owner, keep current ?
+					es = append(es, e)
+				}
+			case e.Priority > cand.priority:
+				ce := &Entry{
 					Timestamp: ts,
 					Owner:     cand.owner,
 					Priority:  cand.priority,
 					P:         make([]string, 0, len(path)),
 					V:         vt,
 				}
-				e.P = append(e.P, path...)
-				es = append(es, e)
+				ce.P = append(ce.P, path...)
+				es = append(es, ce)
 			case e.Priority < cand.priority:
 				es = append(es, e)
 			}
@@ -306,13 +337,10 @@ func (ci *cacheInstance) commit(ctx context.Context, candidate string) error {
 		Updates: make([]*store.KV, 0),
 		Deletes: make([]*store.DelOpts, 0, len(cand.deletes)),
 	}
+
 	// handle deletes
 	for p := range cand.deletes {
-		p += "," + cand.owner
-		bPath := []byte(p)
-		kp := make([]byte, 0, 4+len(bPath))
-		kp = append(kp, prio...)
-		kp = append(kp, bPath...)
+		kp := buildIntendedStoreWriteKey(strings.Split(p, delimStr), cand.priority, cand.owner)
 		txn.Deletes = append(txn.Deletes, &store.DelOpts{
 			K:   kp,
 			Fns: []store.SelectFn{selectPrefixMinusTS(kp)},
@@ -322,11 +350,7 @@ func (ci *cacheInstance) commit(ctx context.Context, candidate string) error {
 	err = cand.updates.Query([]string{},
 		func(path []string, _ *ctree.Leaf, val interface{}) error {
 			vt := val.([]byte)
-			path = append(path, cand.owner)
-			bPath := []byte(strings.Join(path, delimStr))
-			k := make([]byte, 0, 4+len(bPath)+8)
-			k = append(k, prio...)
-			k = append(k, bPath...)
+			k := buildIntendedStoreWriteKey(path, cand.priority, cand.owner)
 			pr := make([]byte, len(k))
 			copy(pr, k)
 			txn.Deletes = append(txn.Deletes, &store.DelOpts{
@@ -346,19 +370,6 @@ func (ci *cacheInstance) commit(ctx context.Context, candidate string) error {
 	}
 	// apply transaction
 	return ci.store.Txn(ctx, ci.cfg.Name, intendedBucketName, txn)
-}
-
-func (ci *cacheInstance) stats(ctx context.Context) (*InstanceStats, error) {
-	ss, err := ci.store.Stats(ctx, ci.cfg.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	is := &InstanceStats{
-		Name:     ci.cfg.Name,
-		KeyCount: ss.KeysPerBucket,
-	}
-	return is, nil
 }
 
 func (ci *cacheInstance) clear(ctx context.Context) error {

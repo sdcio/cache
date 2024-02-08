@@ -1,3 +1,17 @@
+// Copyright 2024 Nokia
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package server
 
 import (
@@ -13,8 +27,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/iptecharch/cache/pkg/cache"
-	"github.com/iptecharch/cache/proto/cachepb"
+	"github.com/sdcio/cache/pkg/cache"
+	"github.com/sdcio/cache/proto/cachepb"
 )
 
 func (s *Server) Get(ctx context.Context, req *cachepb.GetRequest) (*cachepb.GetResponse, error) {
@@ -265,24 +279,6 @@ func (s *Server) Commit(ctx context.Context, req *cachepb.CommitRequest) (*cache
 		return nil, err
 	}
 	return &cachepb.CommitResponse{}, nil
-}
-
-func (s *Server) Stats(ctx context.Context, req *cachepb.StatsRequest) (*cachepb.StatsResponse, error) {
-	ss, err := s.cache.Stats(ctx, req.GetName(), req.GetKeysCount())
-	if err != nil {
-		return nil, err
-	}
-	rsp := &cachepb.StatsResponse{
-		NumCache: int64(ss.NumInstances),
-		KeyCount: map[string]*cachepb.InstanceStats{},
-	}
-	for _, ssi := range ss.InstanceStats {
-		rsp.KeyCount[ssi.Name] = &cachepb.InstanceStats{
-			Name:              ssi.Name,
-			KeyCountPerBucket: ssi.KeyCount,
-		}
-	}
-	return rsp, nil
 }
 
 func (s *Server) Watch(req *cachepb.WatchRequest, stream cachepb.Cache_WatchServer) error {

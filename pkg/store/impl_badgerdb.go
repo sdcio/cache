@@ -1,3 +1,17 @@
+// Copyright 2024 Nokia
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package store
 
 import (
@@ -141,7 +155,13 @@ func (s *badgerDB) DeleteCache(ctx context.Context, name string) error {
 
 		delete(s.cacheIndexes, name)
 		delete(s.cacheNames, index)
-		return nil
+
+		cib := cacheIndexKey(index)
+		prefixes := make([][]byte, 0, 4)
+		for _, s := range []byte{configPrefix, statePrefix, intendedPrefix, intentsPrefix} {
+			prefixes = append(prefixes, []byte{s, cib[0], cib[1]})
+		}
+		return s.db.DropPrefix(prefixes...)
 	}
 	return fmt.Errorf("cache %q does not exist", name)
 }
@@ -502,10 +522,6 @@ func (s *badgerDB) Close() error {
 	s.cfn()
 	s.db.Close()
 	return nil
-}
-
-func (s *badgerDB) Stats(ctx context.Context, name string) (*StoreStats, error) {
-	return nil, nil
 }
 
 func (s *badgerDB) Clear(ctx context.Context, name string) error {

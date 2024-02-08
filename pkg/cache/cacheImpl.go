@@ -1,3 +1,17 @@
+// Copyright 2024 Nokia
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package cache
 
 import (
@@ -11,8 +25,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iptecharch/cache/pkg/config"
-	"github.com/iptecharch/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/config"
+	"github.com/sdcio/cache/pkg/store"
 )
 
 type cache struct {
@@ -342,50 +356,6 @@ func (c *cache) Commit(ctx context.Context, name, candidate string) error {
 		return fmt.Errorf("cache %q does not exist", name)
 	}
 	return ci.commit(ctx, candidate)
-}
-
-func (c *cache) Stats(ctx context.Context, name string, withKeysCount bool) (*StatsResponse, error) {
-	count := c.NumInstances()
-	rsp := &StatsResponse{
-		NumInstances: count,
-	}
-	if !withKeysCount {
-		return rsp, nil
-	}
-	if name == "" {
-		rsp.InstanceStats = make(map[string]*InstanceStats, count)
-		c.m.RLock()
-		defer c.m.RUnlock()
-		wg := new(sync.WaitGroup)
-		wg.Add(count)
-		m := new(sync.Mutex)
-		for _, ci := range c.caches {
-			go func(ci *cacheInstance) {
-				defer wg.Done()
-				ss, err := ci.stats(ctx)
-				if err != nil {
-					log.Errorf("failed to get stats from cache instance %s: %v", ci.cfg.Name, err)
-					return
-				}
-				m.Lock()
-				rsp.InstanceStats[ci.cfg.Name] = ss
-				m.Unlock()
-			}(ci)
-		}
-		wg.Wait()
-		return rsp, nil
-	}
-	ci, ok := c.getCacheInstance(ctx, name)
-	if !ok {
-		return nil, fmt.Errorf("unknown cache instance %s", name)
-	}
-	rsp.InstanceStats = make(map[string]*InstanceStats, 1)
-	ss, err := ci.stats(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rsp.InstanceStats[ci.cfg.Name] = ss
-	return rsp, nil
 }
 
 func (c *cache) Close() error {

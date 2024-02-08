@@ -1,3 +1,17 @@
+// Copyright 2024 Nokia
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package client
 
 import (
@@ -10,8 +24,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/iptecharch/cache/pkg/cache"
-	"github.com/iptecharch/cache/proto/cachepb"
+	"github.com/sdcio/cache/pkg/cache"
+	"github.com/sdcio/cache/proto/cachepb"
 )
 
 const (
@@ -278,15 +292,6 @@ func (c *Client) Discard(ctx context.Context, name, candidate string, opts ...gr
 		Candidate: candidate,
 	}, opts...)
 	return err
-}
-
-func (c *Client) Stats(ctx context.Context, name string, withKeyCount bool, opts ...grpc.CallOption) (*cachepb.StatsResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
-	defer cancel()
-	return c.client.Stats(ctx, &cachepb.StatsRequest{
-		Name:      name,
-		KeysCount: withKeyCount,
-	}, opts...)
 }
 
 func (c *Client) Watch(ctx context.Context, name string, store cache.Store, prefixes [][]string, opts ...grpc.CallOption) (chan *cachepb.WatchResponse, error) {

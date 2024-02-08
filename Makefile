@@ -1,4 +1,4 @@
-REMOTE_REGISTRY :=registry.kmrd.dev/iptecharch/cache
+REMOTE_REGISTRY :=registry.kmrd.dev/sdcio/cache
 TAG := $(shell git describe --tags)
 IMAGE := $(REMOTE_REGISTRY):$(TAG)
 USERID := 10000

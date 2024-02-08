@@ -1,3 +1,17 @@
+// Copyright 2024 Nokia
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package cache
 
 import (
@@ -9,7 +23,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/iptecharch/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/store"
 )
 
 func (ci *cacheInstance) writeValue(ctx context.Context, cname string, wo *Opts, b []byte) error {
@@ -50,7 +64,7 @@ func (ci *cacheInstance) writeValueIntended(ctx context.Context, wo *Opts, v []b
 	now := time.Now().UnixNano()
 	for _, p := range wo.Path {
 		k := buildIntendedStoreWriteKey(p, wo.Priority, wo.Owner)
-		// check if the key exists with a different ts and delete
+		// check if the key exists with a different ts and delete it
 		lkey := len(k)
 		ck := make([]byte, lkey)
 		copy(ck, k)
@@ -222,15 +236,26 @@ func (ci *cacheInstance) deletePrefixIntents(ctx context.Context, wo *Opts) erro
 	return ci.store.DeletePrefix(ctx, ci.cfg.Name, intentsBucketName, []byte(strings.Join(wo.Path[0], delimStr)))
 }
 
+// Intended store key format
+// this key is parsed right to left.
+// having the path at the beginning allows for fast path queries.
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
+// | Variable Length Path Elements   			| 4 Bytes      | Variable    | 2 Bytes         | 8 Bytes      |
+// | (Comma Separated and ending with a comma)	| Priority     | Owner       | Owner Length    | Timestamp    |
+// +--------------------------------------------+--------------+-------------+-----------------+--------------+
 func buildIntendedStoreWriteKey(path []string, priority int32, owner string) []byte {
-	path = append(path, owner)
-	k := []byte(strings.Join(path, delimStr))
+	joinedPath := strings.Join(path, delimStr) + delimStr
+	pathLength := len(joinedPath)
+	ownerLength := len(owner)
+
 	if priority == 0 {
 		priority = defaultWritePriority
 	}
-	priob := make([]byte, 4)
-	binary.BigEndian.PutUint32(priob, uint32(priority))
 
-	k = append(k, priob...)
+	k := make([]byte, pathLength+4+2+ownerLength)
+	copy(k, joinedPath)
+	binary.BigEndian.PutUint32(k[pathLength:pathLength+4], uint32(priority))
+	copy(k[pathLength+4:pathLength+4+ownerLength], owner)
+	binary.BigEndian.PutUint16(k[pathLength+4+ownerLength:], uint16(ownerLength))
 	return k
 }
