@@ -311,6 +311,39 @@ func (ci *cacheInstance) readFromIntentsStoreCh(ctx context.Context, key []byte,
 	return nil
 }
 
+func (ci *cacheInstance) ReadFromIntendedStoreKeysOnly(ctx context.Context) chan *Entry {
+	rsCh := make(chan *Entry)
+	go func() {
+		err := ci.readFromIntendedStoreKeysOnlyCh(ctx, rsCh)
+		if err != nil {
+			log.Errorf("error reading Keys from intended store, %v", err)
+		}
+	}()
+	return rsCh
+}
+
+func (ci *cacheInstance) readFromIntendedStoreKeysOnlyCh(ctx context.Context, rsCh chan *Entry) error {
+	var bucket = "intended"
+	defer close(rsCh)
+
+	sCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, true)
+	if err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case kv, ok := <-sCh:
+			if !ok {
+				return nil
+			}
+			e, _ := parseIntendedStoreKey(kv.K, kv.V)
+			rsCh <- e
+		}
+	}
+}
+
 func (ci *cacheInstance) readFromIntentsStoreKeysOnlyCh(ctx context.Context, kvCh chan *Entry) error {
 	var bucket = "intents"
 	sCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, true)
@@ -325,6 +358,9 @@ func (ci *cacheInstance) readFromIntentsStoreKeysOnlyCh(ctx context.Context, kvC
 			if !ok {
 				return nil
 			}
+
+			parseIntendedStoreKey(kv.K, kv.V)
+
 			kvCh <- &Entry{
 				P: []string{string(kv.K)},
 			}
