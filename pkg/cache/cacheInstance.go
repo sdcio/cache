@@ -120,7 +120,7 @@ func (ci *cacheInstance) delete(ctx context.Context, name string) error {
 	return ci.store.DeleteCache(ctx, name)
 }
 
-func (ci *cacheInstance) deleteCandidate(ctx context.Context, cname string) error {
+func (ci *cacheInstance) deleteCandidate(_ context.Context, cname string) error {
 	ci.m.Lock()
 	defer ci.m.Unlock()
 	delete(ci.candidates, cname)
@@ -147,7 +147,7 @@ func (ci *cacheInstance) clone(ctx context.Context, cname string) (*cacheInstanc
 	return clone, nil
 }
 
-func (ci *cacheInstance) createCandidate(ctx context.Context, cname, owner string, p int32) error {
+func (ci *cacheInstance) createCandidate(_ context.Context, cname, owner string, p int32) error {
 	ci.m.Lock()
 	defer ci.m.Unlock()
 	_, ok := ci.candidates[cname]

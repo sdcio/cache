@@ -114,7 +114,7 @@ func (ci *cacheInstance) writeValueIntents(ctx context.Context, wo *Opts, v []by
 	return ci.store.WriteValue(ctx, ci.cfg.Name, intentsBucketName, k, v, 0)
 }
 
-func (ci *cacheInstance) writeValueConfigCandidate(ctx context.Context, cname string, wo *Opts, v []byte) error {
+func (ci *cacheInstance) writeValueConfigCandidate(_ context.Context, cname string, wo *Opts, v []byte) error {
 	// write to candidate
 	ci.m.Lock()
 	defer ci.m.Unlock()

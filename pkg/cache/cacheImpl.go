@@ -448,7 +448,7 @@ func (c *cache) ApplyPrune(ctx context.Context, name, id string) error {
 	return ci.applyPrune(ctx, id)
 }
 
-func (c *cache) getCacheInstance(ctx context.Context, name string) (*cacheInstance, bool) {
+func (c *cache) getCacheInstance(_ context.Context, name string) (*cacheInstance, bool) {
 	c.m.RLock()
 	defer c.m.RUnlock()
 	ci, ok := c.caches[name]
