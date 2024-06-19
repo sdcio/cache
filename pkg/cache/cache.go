@@ -82,8 +82,8 @@ type Cache interface {
 	// Commit candidate into the intended store
 	Commit(ctx context.Context, name, candidate string) error
 
-	// ReadIntendedKeys Read all the keys of the intended store
-	ReadIntendedKeys(ctx context.Context, name string) (chan *Entry, error)
+	// ReadKeys Read all the keys of the given store
+	ReadKeys(ctx context.Context, name string, store Store) (chan *Entry, error)
 
 	Clear(ctx context.Context, name string) error
 	NumInstances() int

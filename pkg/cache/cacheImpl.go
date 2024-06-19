@@ -229,13 +229,13 @@ func (c *cache) ReadValue(ctx context.Context, name string, ro *Opts) (chan *Ent
 	return ci.readValueCh(ctx, cname, ro)
 }
 
-// ReadIntendedKeys read all the keys from the indended store of the given datastore
-func (c *cache) ReadIntendedKeys(ctx context.Context, name string) (chan *Entry, error) {
-	ci, ok := c.getCacheInstance(ctx, name)
+// ReadKeys read all the keys from the given store of the given datastore
+func (c *cache) ReadKeys(ctx context.Context, datastore string, store Store) (chan *Entry, error) {
+	ci, ok := c.getCacheInstance(ctx, datastore)
 	if !ok {
-		return nil, fmt.Errorf("cache %q does not exist", name)
+		return nil, fmt.Errorf("cache %q does not exist", datastore)
 	}
-	return ci.ReadFromIntendedStoreKeysOnly(ctx), nil
+	return ci.ReadKeys(ctx, store), nil
 }
 
 func (c *cache) ReadValuePeriodic(ctx context.Context, name string, ro *Opts, period time.Duration) (chan *Entry, error) {

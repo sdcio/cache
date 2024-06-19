@@ -311,10 +311,23 @@ func (ci *cacheInstance) readFromIntentsStoreCh(ctx context.Context, key []byte,
 	return nil
 }
 
-func (ci *cacheInstance) ReadFromIntendedStoreKeysOnly(ctx context.Context) chan *Entry {
+func (ci *cacheInstance) ReadKeys(ctx context.Context, store Store) chan *Entry {
+
+	var bucket string
+	switch store {
+	case StoreIntended:
+		bucket = intendedBucketName
+	case StoreConfig:
+		bucket = configBucketName
+	default:
+		log.Errorf("unexpected store type %d", store)
+
+		return nil
+	}
+
 	rsCh := make(chan *Entry)
 	go func() {
-		err := ci.readFromIntendedStoreKeysOnlyCh(ctx, rsCh)
+		err := ci.readKeysCh(ctx, rsCh, bucket)
 		if err != nil {
 			log.Errorf("error reading Keys from intended store, %v", err)
 		}
@@ -322,14 +335,14 @@ func (ci *cacheInstance) ReadFromIntendedStoreKeysOnly(ctx context.Context) chan
 	return rsCh
 }
 
-func (ci *cacheInstance) readFromIntendedStoreKeysOnlyCh(ctx context.Context, rsCh chan *Entry) error {
-	var bucket = "intended"
+func (ci *cacheInstance) readKeysCh(ctx context.Context, rsCh chan *Entry, bucket string) error {
 	defer close(rsCh)
 
 	sCh, err := ci.store.GetAll(ctx, ci.cfg.Name, bucket, true)
 	if err != nil {
 		return err
 	}
+	var e *Entry
 	for {
 		select {
 		case <-ctx.Done():
@@ -338,7 +351,21 @@ func (ci *cacheInstance) readFromIntendedStoreKeysOnlyCh(ctx context.Context, rs
 			if !ok {
 				return nil
 			}
-			e, _ := parseIntendedStoreKey(kv.K, kv.V)
+			switch bucket {
+			case configBucketName:
+				e, err = kvToEntry(kv, bucket)
+				if err != nil {
+					return err
+				}
+			case intendedBucketName:
+				e, err = parseIntendedStoreKey(kv.K, kv.V)
+				if err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("readKeysCh() implemented for buckets %s only, %s not supported", strings.Join([]string{configBucketName, intendedBucketName}, ", "), bucket)
+			}
+
 			rsCh <- e
 		}
 	}
