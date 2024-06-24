@@ -682,7 +682,7 @@ func (s *badgerDB) nextAvailableKey() uint16 {
 	return ^uint16(0)
 }
 
-func (s *badgerDB) writeCacheIndex(ctx context.Context, index uint16, name string, pruneIndex uint8) error {
+func (s *badgerDB) writeCacheIndex(_ context.Context, index uint16, name string, pruneIndex uint8) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		mk := make([]byte, 0, 3)
 		mk = append(mk, metaPrefix)
@@ -693,7 +693,7 @@ func (s *badgerDB) writeCacheIndex(ctx context.Context, index uint16, name strin
 	})
 }
 
-func (s *badgerDB) clear(ctx context.Context, name string) error {
+func (s *badgerDB) clear(_ context.Context, name string) error {
 	if index, ok := s.cacheIndexes[name]; ok {
 		return s.db.Update(func(txn *badger.Txn) error {
 			fk := make([]byte, 1, 3)
@@ -727,7 +727,7 @@ func (s *badgerDB) clear(ctx context.Context, name string) error {
 	return fmt.Errorf("cache %q does not exist", name)
 }
 
-func (s *badgerDB) deleteCacheIndex(ctx context.Context, index uint16) error {
+func (s *badgerDB) deleteCacheIndex(_ context.Context, index uint16) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		mk := make([]byte, 0, 3)
 		mk = append(mk, metaPrefix)

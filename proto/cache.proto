@@ -41,6 +41,8 @@ service Cache {
     rpc Prune(PruneRequest)                     returns (PruneResponse);
     // Read value(s) from a cache instance
     rpc Read(ReadRequest)                       returns (stream ReadResponse);
+    // ReadKeys reads the index of the store and returns the data
+    rpc ReadKeys(ReadRequest)                    returns (stream ReadResponse);
     // GetChanges made to a candidate
     rpc GetChanges(GetChangesRequest)           returns (stream GetChangesResponse);
     // Discard changes made to a candidate

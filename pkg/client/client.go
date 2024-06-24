@@ -253,6 +253,38 @@ func (c *Client) Read(ctx context.Context, name string, ro *ClientOpts, paths []
 	return updCh
 }
 
+// ReadKeys Read all the keys of the given store
+func (c *Client) ReadKeys(ctx context.Context, name string, store cachepb.Store) (chan *cachepb.ReadResponse, error) {
+	keyCh := make(chan *cachepb.ReadResponse)
+	rkc, err := c.client.ReadKeys(ctx, &cachepb.ReadRequest{
+		Name:     name,
+		Store:    store,
+		KeysOnly: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				rsp, err := rkc.Recv()
+				if err != nil {
+					if strings.Contains(err.Error(), "EOF") {
+						break
+					}
+					log.Error("fail rcv", err)
+					return
+				}
+				keyCh <- rsp
+			}
+		}
+	}()
+	return keyCh, nil
+}
+
 // GetChanges made to a candidate
 func (c *Client) GetChanges(ctx context.Context, name, candidate string, opts ...grpc.CallOption) ([]*cachepb.GetChangesResponse, error) {
 	stream, err := c.client.GetChanges(ctx, &cachepb.GetChangesRequest{

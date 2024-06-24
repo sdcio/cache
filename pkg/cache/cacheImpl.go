@@ -229,6 +229,15 @@ func (c *cache) ReadValue(ctx context.Context, name string, ro *Opts) (chan *Ent
 	return ci.readValueCh(ctx, cname, ro)
 }
 
+// ReadKeys read all the keys from the given store of the given datastore
+func (c *cache) ReadKeys(ctx context.Context, datastore string, store Store) (chan *Entry, error) {
+	ci, ok := c.getCacheInstance(ctx, datastore)
+	if !ok {
+		return nil, fmt.Errorf("cache %q does not exist", datastore)
+	}
+	return ci.ReadKeys(ctx, store), nil
+}
+
 func (c *cache) ReadValuePeriodic(ctx context.Context, name string, ro *Opts, period time.Duration) (chan *Entry, error) {
 	rsCh := make(chan *Entry)
 	ticker := time.NewTicker(period)
@@ -439,7 +448,7 @@ func (c *cache) ApplyPrune(ctx context.Context, name, id string) error {
 	return ci.applyPrune(ctx, id)
 }
 
-func (c *cache) getCacheInstance(ctx context.Context, name string) (*cacheInstance, bool) {
+func (c *cache) getCacheInstance(_ context.Context, name string) (*cacheInstance, bool) {
 	c.m.RLock()
 	defer c.m.RUnlock()
 	ci, ok := c.caches[name]
