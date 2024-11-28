@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 
 	"github.com/sdcio/cache/pkg/client"
+	"github.com/sdcio/cache/proto/cachepb"
 )
 
 // getCmd represents the get command
@@ -42,6 +43,13 @@ var getCmd = &cobra.Command{
 			return err
 		}
 		fmt.Println(prototext.Format(rsp))
+
+		respCh, err := c.ReadKeys(cmd.Context(), cacheName, cachepb.Store_INTENDED)
+
+		for x := range respCh {
+			fmt.Println(prototext.Format(x))
+		}
+
 		return nil
 	},
 }
