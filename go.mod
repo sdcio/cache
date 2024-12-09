@@ -21,7 +21,7 @@ require (
 )
 
 require (
-	github.com/dgraph-io/badger/v4 v4.4.0
+	github.com/dgraph-io/badger/v4 v4.5.0
 	github.com/dgraph-io/ristretto/v2 v2.0.0
 	github.com/kylelemons/godebug v1.1.0
 	github.com/sdcio/sdc-protos v0.0.36
