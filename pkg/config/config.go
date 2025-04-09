@@ -34,7 +34,7 @@ const (
 	defaultBufferSize    = 100 * 1000
 	numOfModifyWorkers   = 16
 	//
-	defaultCacheStoreType  = "badgerdbsingle"
+	defaultCacheStoreType  = "filesystem"
 	defaultCacheDir        = "./cached/caches"
 	defaultPruneIDLifetime = 5 * time.Minute
 )

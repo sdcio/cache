@@ -28,6 +28,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sdcio/cache/pkg/cache"
 	"github.com/sdcio/cache/pkg/config"
+	"github.com/sdcio/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/store/badgerdb"
 	"github.com/sdcio/cache/pkg/store/filesystem"
 	"github.com/sdcio/cache/proto/cachepb"
 	log "github.com/sirupsen/logrus"
@@ -91,10 +93,19 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 func (s *Server) Start(ctx context.Context) error {
 	var err error
+	var storeInitFunc func(cachename string) (store.Store, error)
 
-	storeInitFunc, err := filesystem.PreConfigureFilesystemInitFunc(s.cfg.Cache.Dir)
-	if err != nil {
-		return err
+	switch s.cfg.Cache.StoreType {
+	case "badgerdb":
+		storeInitFunc, err = badgerdb.PreconfigureBadgerDbInitFunc(s.cfg.Cache.Dir)
+		if err != nil {
+			return err
+		}
+	case "filesystem":
+		storeInitFunc, err = filesystem.PreConfigureFilesystemInitFunc(s.cfg.Cache.Dir)
+		if err != nil {
+			return err
+		}
 	}
 
 	s.cache, err = cache.NewCache(storeInitFunc)
