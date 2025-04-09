@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	_ "net/http/pprof"
 	"os"
 	"time"
 
