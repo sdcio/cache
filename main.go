@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"time"
@@ -60,11 +59,6 @@ func main() {
 	}
 	var s *server.Server
 
-	// TO BE REMOVED
-	go func() {
-		log.Println(http.ListenAndServe(":6060", nil))
-	}()
-	//
 START:
 	if s != nil {
 		s.Stop()

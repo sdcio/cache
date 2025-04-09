@@ -1,138 +1,174 @@
-// Copyright 2024 Nokia
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package cache
 
 import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/sdcio/cache/pkg/config"
+	"github.com/sdcio/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/types"
 )
 
-type Store int8
+type Cache struct {
+	instances      map[string]*cacheInstance
+	instancesMutex *sync.RWMutex
 
-const (
-	StoreConfig   Store = 0
-	StoreState    Store = 1
-	StoreIntended Store = 2
-	StoreIntents  Store = 3
-)
-
-type Cache interface {
-	// Initialize cache instances
-	Init(ctx context.Context) error
-	// List cache instances
-	List(ctx context.Context) []string
-	// Create a new cache instance
-	Create(ctx context.Context, cfg *CacheInstanceConfig) error
-	// GetDetails returns a cache instance details
-	GetDetails(ctx context.Context, name string) (*CacheInstanceConfig, error)
-	// Delete a cache instance or a candidate in a cache instance.
-	// the name should be in the format $cache/$candidate to delete a candidate
-	Delete(ctx context.Context, name string) error
-	// Exists return true if a cache instance called 'name' exists,
-	// false otherwise
-	Exists(ctx context.Context, name string) bool
-	// Clone a cache instance
-	Clone(ctx context.Context, name, cname string) (string, error)
-	// Create a candidate for an existing cache instance
-	CreateCandidate(ctx context.Context, name, candidate, owner string, priority int32) (string, error)
-	// GetCandidate returns the candidate details; owner and priority
-	GetCandidate(ctx context.Context, name, cname string) (*CandidateDetails, error)
-	// Candidates returns the list of candidates created for a cache instance
-	Candidates(ctx context.Context, name string) ([]*CandidateDetails, error)
-
-	// WriteValue writes a bytes value into the named cache
-	WriteValue(ctx context.Context, name string, wo *Opts, vb []byte) error
-	// CreatePruneID creates a pruneID that can be used to trigger a prune
-	// with ApplyPrune once all updates are pushed
-	CreatePruneID(ctx context.Context, name string, force bool) (string, error)
-	// ApplyPrune runs a prune on the config and state stores of the cache instance.
-	// It deletes all values that where not updated since the pruneID was generated.
-	ApplyPrune(ctx context.Context, name, id string) error
-
-	// ReadValue reads a value from a cache instance.
-	ReadValue(ctx context.Context, name string, ro *Opts) (chan *Entry, error)
-	// ReadValuePeriodic reads a value from a cache instance every period
-	ReadValuePeriodic(ctx context.Context, name string, ro *Opts, period time.Duration) (chan *Entry, error)
-	// DeleteValue deletes a value from a cache instance.
-	DeleteValue(ctx context.Context, name string, wo *Opts) error
-	// DeletePrefix deletes any key/value with the given prefix
-	DeletePrefix(ctx context.Context, name string, wo *Opts) error
-	// Diff returns the changes made to a candidate
-	Diff(ctx context.Context, name, candidate string) ([][]string, []*Entry, error)
-	// Discard drops the changes made to a candidate
-	Discard(ctx context.Context, name, candidate string) error
-	// Close the underlying resources, like the persistent store
-	Close() error
-	// Commit candidate into the intended store
-	Commit(ctx context.Context, name, candidate string) error
-
-	// ReadKeys Read all the keys of the given store
-	ReadKeys(ctx context.Context, name string, store Store) (chan *Entry, error)
-
-	Clear(ctx context.Context, name string) error
-	NumInstances() int
-	Watch(ctx context.Context, name string, store Store, prefixes [][]string) (chan *Entry, error)
+	storeInitializer func(instanceName string) (store.Store, error)
 }
 
-type Entry struct {
-	Timestamp uint64
-	Owner     string
-	Priority  int32
-	P         []string
-	V         []byte
-}
-
-func (e *Entry) String() string {
-	return fmt.Sprintf("ts=%d, owner=%s, priority=%d, path=%v, value=%s",
-		e.Timestamp, e.Owner, e.Priority, e.P, e.V)
-}
-
-type CandidateDetails struct {
-	CacheName     string
-	CandidateName string
-	Owner         string
-	Priority      int32
-}
-
-type Opts struct {
-	Store         Store
-	Path          [][]string // TODO: replace with cachepb.Path
-	Owner         string
-	Priority      int32
-	PriorityCount uint64
-	KeysOnly      bool // used with the intents store only
-}
-
-type StatsResponse struct {
-	NumInstances  int
-	InstanceStats map[string]*InstanceStats
-}
-
-type InstanceStats struct {
-	Name     string
-	KeyCount map[string]int64
-}
-
-func New(cfg *config.CacheConfig) Cache {
-	return &cache{
-		cfg:    cfg,
-		m:      new(sync.RWMutex),
-		caches: make(map[string]*cacheInstance),
+func NewCache(storeInitializer func(instanceName string) (store.Store, error)) (*Cache, error) {
+	c := &Cache{
+		instances:        map[string]*cacheInstance{},
+		storeInitializer: storeInitializer,
+		instancesMutex:   &sync.RWMutex{},
 	}
+
+	return c, nil
+}
+
+func (c *Cache) getCacheInstance(cacheName string) (*cacheInstance, error) {
+	c.instancesMutex.RLock()
+	defer c.instancesMutex.RUnlock()
+	ci, exists := c.instances[cacheName]
+	if !exists {
+		return nil, fmt.Errorf("%w: %s", ErrorCacheInstanceNotFound, cacheName)
+	}
+	return ci, nil
+}
+
+func (c *Cache) InstanceDelete(ctx context.Context, cacheInstanceName string) error {
+	c.instancesMutex.Lock()
+	defer c.instancesMutex.Unlock()
+
+	ci, exists := c.instances[cacheInstanceName]
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrorCacheInstanceNotFound, cacheInstanceName)
+	}
+
+	err := ci.Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+	delete(c.instances, cacheInstanceName)
+
+	return nil
+}
+
+func (c *Cache) InstanceClose(ctx context.Context, cacheInstanceName string) error {
+	c.instancesMutex.Lock()
+	defer c.instancesMutex.Unlock()
+
+	ci, exists := c.instances[cacheInstanceName]
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrorCacheInstanceNotFound, cacheInstanceName)
+	}
+
+	ci.Close()
+	delete(c.instances, cacheInstanceName)
+
+	return nil
+}
+
+func (c *Cache) InstanceCreate(ctx context.Context, cacheInstanceName string) error {
+	c.instancesMutex.Lock()
+	defer c.instancesMutex.Unlock()
+
+	if _, exists := c.instances[cacheInstanceName]; exists {
+		return fmt.Errorf("%w: %s", ErrorCacheInstanceAlreadyExists, cacheInstanceName)
+	}
+
+	store, err := c.storeInitializer(cacheInstanceName)
+	if err != nil {
+		return err
+	}
+	ci, err := newCacheInstance(store)
+	if err != nil {
+		return err
+	}
+
+	c.instances[cacheInstanceName] = ci
+
+	return nil
+}
+
+func (c *Cache) InstanceExists(ctx context.Context, cacheName string) bool {
+	c.instancesMutex.RLock()
+	defer c.instancesMutex.RUnlock()
+	_, exists := c.instances[cacheName]
+	return exists
+}
+
+func (c *Cache) InstancesList(ctx context.Context) []string {
+	result := make([]string, 0, len(c.instances))
+	for name := range c.instances {
+		result = append(result, name)
+	}
+	return result
+}
+
+func (c *Cache) InstanceIntentGet(ctx context.Context, cacheName string, intentName string) ([]byte, error) {
+	ci, err := c.getCacheInstance(cacheName)
+	if err != nil {
+		return nil, err
+	}
+	return ci.IntentGet(ctx, intentName)
+}
+
+func (c *Cache) InstanceIntentsList(ctx context.Context, cacheName string) ([]string, error) {
+	ci, err := c.getCacheInstance(cacheName)
+	if err != nil {
+		return nil, err
+	}
+
+	return ci.IntentsList(ctx)
+}
+
+func (c *Cache) InstanceIntentModify(ctx context.Context, cacheName string, intentName string, data []byte) error {
+	ci, err := c.getCacheInstance(cacheName)
+	if err != nil {
+		return err
+	}
+
+	return ci.IntentModify(ctx, intentName, data)
+}
+
+func (c *Cache) InstanceIntentDelete(ctx context.Context, cacheName string, intentName string) error {
+	ci, err := c.getCacheInstance(cacheName)
+	if err != nil {
+		return err
+	}
+	return ci.InstanceIntentDelete(ctx, intentName)
+}
+
+func (c *Cache) InstanceIntentExists(ctx context.Context, cacheName string, intentName string) (bool, error) {
+	ci, err := c.getCacheInstance(cacheName)
+	if err != nil {
+		return false, err
+	}
+	return ci.InstanceIntentExists(ctx, intentName)
+}
+
+func (c *Cache) InstanceIntentGetAll(ctx context.Context, cacheName string, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
+	ci, err := c.getCacheInstance(cacheName)
+	if err != nil {
+		errChan <- err
+		return
+	}
+	ci.InstanceIntentGetAll(ctx, excludeIntentNames, intentChan, errChan)
+}
+
+func (c *Cache) Close() error {
+	c.instancesMutex.Lock()
+	defer c.instancesMutex.Unlock()
+
+	for name, instance := range c.instances {
+		err := instance.Close()
+		if err != nil {
+			return err
+		}
+		delete(c.instances, name)
+	}
+
+	return nil
 }

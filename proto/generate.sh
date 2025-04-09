@@ -16,6 +16,8 @@
 
 SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
+clang-format -i -style=file:clang-format.style $SCRIPTPATH/cache.proto
+
 CACHE_OUT_DIR=$SCRIPTPATH/cachepb
 mkdir -p $CACHE_OUT_DIR
 protoc --go_out=$CACHE_OUT_DIR --go-grpc_out=$CACHE_OUT_DIR -I $SCRIPTPATH $SCRIPTPATH/cache.proto

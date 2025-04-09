@@ -37,13 +37,10 @@ cache:
   # store-type: badgerdb
   store-type: badgerdb
   # directory to be used by the persistence store
-  dir: ./cached/caches
+  dir: /home/mava/projects/cachev2/cache
   # max number of caches
   # unlimited if eq to zero or negative
   max-caches: 0
-  # TODOs
-  # max-candidate-per-cache: 100
-  prune-id-lifetime: 5m
 
 prometheus:
   address: :50190
