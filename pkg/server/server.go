@@ -26,39 +26,35 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-
 	"github.com/sdcio/cache/pkg/cache"
 	"github.com/sdcio/cache/pkg/config"
+	"github.com/sdcio/cache/pkg/store"
+	"github.com/sdcio/cache/pkg/store/badgerdb"
+	"github.com/sdcio/cache/pkg/store/filesystem"
 	"github.com/sdcio/cache/proto/cachepb"
-)
+	log "github.com/sirupsen/logrus"
 
-const (
-	writeTimeout = 30 * time.Second
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type Server struct {
 	cfg *config.Config
 
-	cache cache.Cache
+	cache *cache.Cache
 	srv   *grpc.Server
 	cachepb.UnimplementedCacheServer
 	//
 	router  *mux.Router
 	httpSrv *http.Server
 	reg     *prometheus.Registry
-	//
-	modifyCh chan *cachepb.ModifyRequest
 }
 
 func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	s := &Server{
-		cfg:      cfg,
-		router:   mux.NewRouter(),
-		reg:      prometheus.NewRegistry(),
-		modifyCh: make(chan *cachepb.ModifyRequest, cfg.GRPCServer.BufferSize),
+		cfg:    cfg,
+		router: mux.NewRouter(),
+		reg:    prometheus.NewRegistry(),
 	}
 
 	opts := []grpc.ServerOption{
@@ -88,7 +84,6 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		}
 		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 	}
-	//
 
 	s.srv = grpc.NewServer(opts...)
 
@@ -97,14 +92,26 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 }
 
 func (s *Server) Start(ctx context.Context) error {
-	s.cache = cache.New(s.cfg.Cache)
-	if s.cfg.Cache.StoreType != "" {
-		err := s.cache.Init(ctx)
+	var err error
+	var storeInitFunc func(cachename string) (store.Store, error)
+
+	switch s.cfg.Cache.StoreType {
+	case "badgerdb":
+		storeInitFunc, err = badgerdb.PreconfigureBadgerDbInitFunc(s.cfg.Cache.Dir)
+		if err != nil {
+			return err
+		}
+	case "filesystem":
+		storeInitFunc, err = filesystem.PreConfigureFilesystemInitFunc(s.cfg.Cache.Dir)
 		if err != nil {
 			return err
 		}
 	}
-	go s.startWriteWorkers(ctx)
+
+	s.cache, err = cache.NewCache(storeInitFunc)
+	if err != nil {
+		return err
+	}
 	l, err := net.Listen("tcp", s.cfg.GRPCServer.Address)
 	if err != nil {
 		return err
@@ -142,37 +149,6 @@ func (s *Server) Stop() {
 	if s.httpSrv != nil {
 		s.httpSrv.Shutdown(context.TODO())
 	}
-	s.cache.Close()
-}
-
-func (s *Server) startWriteWorkers(ctx context.Context) {
-	for i := 0; i < s.cfg.GRPCServer.WriteWorkers; i++ {
-		go s.writeWorker(ctx)
-	}
-	<-ctx.Done()
-}
-
-func (s *Server) writeWorker(ctx context.Context) {
-	var err error
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case req := <-s.modifyCh:
-			ctx, cancel := context.WithTimeout(ctx, writeTimeout)
-			switch req := req.Request.(type) {
-			case *cachepb.ModifyRequest_Write:
-				err = s.modifyWrite(ctx, req.Write)
-				if err != nil {
-					log.Errorf("failed modify write: %v", err)
-				}
-			case *cachepb.ModifyRequest_Delete:
-				err = s.modifyDelete(ctx, req.Delete)
-				if err != nil {
-					log.Errorf("failed modify delete: %v", err)
-				}
-			}
-			cancel()
-		}
-	}
+	err := s.cache.Close()
+	log.Error(err)
 }

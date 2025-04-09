@@ -41,9 +41,6 @@ cache:
   # max number of caches
   # unlimited if eq to zero or negative
   max-caches: 0
-  # TODOs
-  # max-candidate-per-cache: 100
-  prune-id-lifetime: 5m
 
 prometheus:
   address: :50190

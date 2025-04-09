@@ -1,267 +1,85 @@
-// Copyright 2024 Nokia
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 syntax = "proto3";
 
-import "google/protobuf/any.proto";
+// import "google/protobuf/any.proto";
 
 package cache.proto;
 
 option go_package = ".;cachepb";
 
 service Cache {
-    // List cache instances
-    rpc List(ListRequest)                       returns (ListResponse);
-    // Get a single cache details
-    rpc Get(GetRequest)                         returns (GetResponse);
-    // Create a new cache instance
-    rpc Create(CreateRequest)                   returns (CreateResponse);
-    // Delete a cache instance
-    rpc Delete(DeleteRequest)                   returns (DeleteResponse);
-    // Exists check if a cache instance exists
-    rpc Exists(ExistsRequest)                   returns (ExistsResponse);
-    // Create a Candidate
-    rpc CreateCandidate(CreateCandidateRequest) returns (CreateCandidateResponse);
-    // Clone a cache
-    rpc Clone(CloneRequest)                     returns (CloneResponse);
-    // modify a cache instance
-    rpc Modify(stream ModifyRequest)            returns (ModifyResponse);
-    // prune deletes 
-    rpc Prune(PruneRequest)                     returns (PruneResponse);
-    // Read value(s) from a cache instance
-    rpc Read(ReadRequest)                       returns (stream ReadResponse);
-    // ReadKeys reads the index of the store and returns the data
-    rpc ReadKeys(ReadRequest)                    returns (stream ReadResponse);
-    // GetChanges made to a candidate
-    rpc GetChanges(GetChangesRequest)           returns (stream GetChangesResponse);
-    // Discard changes made to a candidate
-    rpc Discard(DiscardRequest)                 returns (DiscardResponse);
-    // Commit writes a candidate changes into the intended store
-    rpc Commit(CommitRequest)                   returns (CommitResponse);
-    // Clear wipes a cache
-    rpc Clear(ClearRequest)                     returns (ClearResponse);
-    // Watch
-    rpc Watch(WatchRequest)                     returns (stream WatchResponse);
+  // Create cache instance
+  rpc InstanceCreate(InstanceCreateRequest) returns (InstanceCreateResponse);
+  // List cache instances
+  rpc InstancesList(InstancesListRequest) returns (InstancesListResponse);
+  // List the cache specific Intents
+  rpc InstanceDelete(InstanceDeleteRequest) returns (InstanceDeleteResponse);
+  // Delete a cache instance specific intent
+  rpc InstanceIntentsList(InstanceIntentsListRequest)
+      returns (InstanceIntentsListResponse);
+  rpc InstanceIntentsGetAll(InstanceIntentGetAllRequest)
+      returns (stream InstanceIntentGetResponse);
+  // Get a cache specific Intent
+  rpc InstanceIntentGet(InstanceIntentGetRequest)
+      returns (InstanceIntentGetResponse);
+  // Check existence of a cache specifc intent
+  rpc InstanceIntentExists(InstanceIntentExistsRequest)
+      returns (InstanceIntentExistsResponse);
+  // Modify a cache specifc intent (add / modify)
+  rpc InstanceIntentModify(InstanceIntentModifyRequest)
+      returns (InstanceIntentModifyResponse);
+  // Delete a cache instance
+  rpc InstanceIntentDelete(InstanceIntentDeleteRequest)
+      returns (InstanceIntentDeleteResponse);
 }
-//
-message GetRequest{
-    string name = 1;
-}
-message GetResponse{
-    string              name      = 1;
-    // bool                ephemeral = 2;
-    // bool                cached    = 3;
-    repeated Candidate  candidate = 4;
-}
-//
-message ListRequest{}
-message ListResponse{
-    repeated string cache = 1;
-}
-//
-message CreateRequest{
-    string name    = 1;
-    // bool ephemeral = 2;
-    // bool cached    = 3;
-}
-message CreateResponse{}
-//
-message DeleteRequest{
-    string name = 1;
-}
-message DeleteResponse{}
-//
-message ExistsRequest{
-    string name = 1;
-}
-message ExistsResponse{
-    bool exists = 1;
-}
-//
-message CloneRequest{
-    string name  = 1;
-    string cname = 2;
-}
-message CloneResponse{
-    string clone = 1;
+message InstanceDeleteRequest { string cache_instance_name = 1; }
+
+message InstanceDeleteResponse {}
+
+message InstanceIntentDeleteRequest {
+  string cache_instance_name = 1;
+  string intent_name         = 2;
 }
 
-message CreateCandidateRequest{
-    string name      = 1;
-    string candidate = 2;
-    string owner     = 3;
-    int32  priority  = 4;
-}
-message CreateCandidateResponse{
-    string name      = 1;
-    string candidate = 2;
-}
-//
-message ModifyRequest{
-    oneof request {
-        WriteValueRequest  write  = 1;
-        DeleteValueRequest delete = 2;
-    }
-}
-message ModifyResponse{
-    oneof response {
-        WriteValueResponse  write  = 1;
-        DeleteValueResponse delete = 2;
-    }
-}
-//
-message WriteValueRequest{
-    string              name     = 1;
-    repeated string     path     = 2;
-    google.protobuf.Any value    = 3;
-    Store               store    = 4;
-    string              owner    = 5;
-    int32               priority = 6;
-}
-message WriteValueResponse{
-    string          name  = 1;
-    repeated string path  = 2;
-    string          error = 3;
-    Store           store = 4;
-}
-//
-message PruneRequest{
-    string name  = 1;
-    string id    = 2;
-    bool   force = 3;
-}
-message PruneResponse{
-    string id = 1;
-}
-//
-message ReadRequest{
-    // cache instance name
-    string                  name            = 2;
-    // paths
-    repeated Path           path            = 3;
-    // store type: config, state, intended, intents
-    Store                   store           = 4;
-    // read period in nano seconds, if > 0
-    // this read becomes a sample subscription
-    uint64                  period          = 5;
-    // read a specific owner
-    string                  owner           = 6;
-    // read a specific priority.
-    // if 0: read the highest.
-    // if < 0: read all priorities.
-    int32                   priority        = 7;
-    // in case priority == 0; this specifies how 
-    // many "highest" priorities we want to read.
-    uint64                  priority_count  = 8;
-    // return keys only, used for reading raw intents
-    // from the intents store
-    bool                    keys_only       = 9;
-}
-message ReadResponse{
-    string                  name        = 2;
-    repeated string         path        = 3;
-    google.protobuf.Any     value       = 4;
-    Store                   store       = 5;
-    string                  owner       = 6;
-    int32                   priority    = 7;
-    int64                   timestamp   = 8;
-}
-//
-message DeleteValueRequest{
-    string                  name     = 1;
-    repeated string         path     = 2;
-    Store                   store    = 3;
-    string                  owner    = 4;
-    int32                   priority = 5;
-}
-message DeleteValueResponse{
-    string          name  = 1;
-    repeated string path  = 2;
-    string          error = 3;
-}
-//
-message GetChangesRequest{
-    string name      = 1;
-    string candidate = 2;
-}
-message GetChangesResponse{
-    string name      = 1;
-    string candidate = 2;
-    Update update    = 3;
-    repeated string delete    = 4;
-}
-//
-message DiscardRequest{
-    string name      = 1;
-    string candidate = 2;
-}
-message DiscardResponse{}
+message InstanceIntentDeleteResponse {}
 
-message CommitRequest{
-    string name      = 1;
-    string candidate = 2;
-}
-message CommitResponse{}
+message InstanceCreateRequest { string cache_instance_name = 1; }
 
-message StatsRequest{
-    string name      = 1;
-    bool   keys_count = 2;
-}
-message StatsResponse{
-    int64                       num_cache = 1;
-    map<string, InstanceStats>  key_count = 2;
+message InstanceCreateResponse {}
+
+message InstancesListRequest {}
+
+message InstancesListResponse { repeated string cache_instances = 1; }
+
+message InstanceIntentsListRequest { string cache_instance_name = 1; }
+
+message InstanceIntentsListResponse { repeated string intents = 1; }
+
+message InstanceIntentGetRequest {
+  string cache_instance_name = 1;
+  string intent_name         = 2;
 }
 
-message ClearRequest{
-    string name      = 1;
-}
-message ClearResponse{}
-
-message WatchRequest{
-    string          name  = 1;
-    Store           store = 2;
-    repeated Path   path  = 3;
-}
-message WatchResponse{
-    repeated string path  = 1;
-    bytes           value = 2;
+message InstanceIntentGetResponse {
+  string intent_name = 1;
+  bytes  intent      = 2;
 }
 
-// sub messages
-message Update{
-    repeated string     path  = 2;
-    google.protobuf.Any value = 3;
+message InstanceIntentExistsRequest {
+  string cache_instance_name = 1;
+  string intent_name         = 2;
 }
 
-enum Store {
-    CONFIG      = 0;
-    STATE       = 1;
-    INTENDED    = 2;
-    INTENTS     = 3;
+message InstanceIntentExistsResponse { bool exists = 1; }
+
+message InstanceIntentModifyRequest {
+  string cache_instance_name = 1;
+  string intent_name         = 2;
+  bytes  intent              = 3;
 }
 
-message InstanceStats {
-    string name = 1;
-    map<string, int64> key_count_per_bucket = 2;
-}
+message InstanceIntentModifyResponse {}
 
-message Candidate {
-    string name     = 1;
-    string owner    = 2;
-    int32  priority = 3;
-}
-
-message Path {
-    repeated string elem = 1;
+message InstanceIntentGetAllRequest {
+  string          cache_instance_name = 1;
+  repeated string exclude_intents     = 2;
 }

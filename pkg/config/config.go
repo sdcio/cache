@@ -34,7 +34,7 @@ const (
 	defaultBufferSize    = 100 * 1000
 	numOfModifyWorkers   = 16
 	//
-	defaultCacheStoreType  = "badgerdbsingle"
+	defaultCacheStoreType  = "filesystem"
 	defaultCacheDir        = "./cached/caches"
 	defaultPruneIDLifetime = 5 * time.Minute
 )
@@ -55,10 +55,8 @@ type GRPCServer struct {
 }
 
 type CacheConfig struct {
-	MaxCaches       int           `yaml:"max-caches,omitempty" json:"max-caches,omitempty"`
-	StoreType       string        `yaml:"store-type,omitempty" json:"store-type,omitempty"`
-	Dir             string        `yaml:"dir,omitempty" json:"dir,omitempty"`
-	PruneIDLifetime time.Duration `yaml:"prune-id-lifetime,omitempty" json:"prune-id-lifetime,omitempty"`
+	StoreType string `yaml:"store-type,omitempty" json:"store-type,omitempty"`
+	Dir       string `yaml:"dir,omitempty" json:"dir,omitempty"`
 }
 
 func New(file string) (*Config, error) {
@@ -107,9 +105,6 @@ func (cc *CacheConfig) validateSetDefaults() error {
 	}
 	if cc.Dir == "" {
 		cc.Dir = defaultCacheDir
-	}
-	if cc.PruneIDLifetime <= 0 {
-		cc.PruneIDLifetime = defaultPruneIDLifetime
 	}
 	return nil
 }
