@@ -37,7 +37,7 @@ cache:
   # store-type: badgerdb
   store-type: badgerdb
   # directory to be used by the persistence store
-  dir: /home/mava/projects/cachev2/cache
+  dir: ./cached/caches
   # max number of caches
   # unlimited if eq to zero or negative
   max-caches: 0
