@@ -48,7 +48,7 @@ func NewBadgerDBStore(path string) (*badgerDB, error) {
 	}, nil
 }
 
-func (b *badgerDB) IntentDelete(ctx context.Context, intentName string) error {
+func (b *badgerDB) IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error {
 	// Start a writable transaction.
 	txn := b.db.NewTransaction(true)
 	defer txn.Discard()
@@ -58,6 +58,9 @@ func (b *badgerDB) IntentDelete(ctx context.Context, intentName string) error {
 	// Delete the intent
 	err := txn.Delete(intentNameByte)
 	if err != nil {
+		if IgnoreNonExisting {
+			return nil
+		}
 		return err
 	}
 

@@ -133,12 +133,12 @@ func (c *Cache) InstanceIntentModify(ctx context.Context, cacheName string, inte
 	return ci.IntentModify(ctx, intentName, data)
 }
 
-func (c *Cache) InstanceIntentDelete(ctx context.Context, cacheName string, intentName string) error {
+func (c *Cache) InstanceIntentDelete(ctx context.Context, cacheName string, intentName string, IgnoreNonExisting bool) error {
 	ci, err := c.getCacheInstance(cacheName)
 	if err != nil {
 		return err
 	}
-	return ci.InstanceIntentDelete(ctx, intentName)
+	return ci.InstanceIntentDelete(ctx, intentName, IgnoreNonExisting)
 }
 
 func (c *Cache) InstanceIntentExists(ctx context.Context, cacheName string, intentName string) (bool, error) {

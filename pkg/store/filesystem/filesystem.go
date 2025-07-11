@@ -141,11 +141,14 @@ func (f *filesystem) intentsList() ([]string, error) {
 	return result, nil
 }
 
-func (f *filesystem) IntentDelete(ctx context.Context, intentName string) error {
+func (f *filesystem) IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error {
 	f.m.Lock()
 	defer f.m.Unlock()
 	err := f.errorIntentNonExists(intentName)
 	if err != nil {
+		if IgnoreNonExisting {
+			return nil
+		}
 		return err
 	}
 	return os.RemoveAll(f.getIntentPath(intentName))

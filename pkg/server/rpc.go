@@ -112,7 +112,7 @@ func (s *Server) InstanceIntentDelete(ctx context.Context, req *cachepb.Instance
 		return nil, status.Errorf(codes.InvalidArgument, "intent name not set for cache %s", req.GetCacheInstanceName())
 	}
 
-	err := s.cache.InstanceIntentDelete(ctx, req.GetCacheInstanceName(), req.GetIntentName())
+	err := s.cache.InstanceIntentDelete(ctx, req.GetCacheInstanceName(), req.GetIntentName(), req.GetIgnoreNonExisting())
 	return nil, err
 }
 
