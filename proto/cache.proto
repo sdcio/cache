@@ -38,6 +38,7 @@ message InstanceDeleteResponse {}
 message InstanceIntentDeleteRequest {
   string cache_instance_name = 1;
   string intent_name         = 2;
+  bool   IgnoreNonExisting   = 3;
 }
 
 message InstanceIntentDeleteResponse {}
