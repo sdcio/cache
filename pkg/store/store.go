@@ -26,7 +26,7 @@ type Store interface {
 	IntentsList(ctx context.Context) ([]string, error)
 	IntentGet(ctx context.Context, intentName string) ([]byte, error)
 	IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error)
-	IntentDelete(ctx context.Context, intentName string) error
+	IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error
 	// Delete the Store. Implicitly closes store
 	Delete() error
 	// Close the Store

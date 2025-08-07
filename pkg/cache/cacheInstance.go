@@ -38,8 +38,8 @@ func (ci *cacheInstance) IntentModify(ctx context.Context, intentName string, da
 	return ci.store.IntentModify(ctx, intentName, data)
 }
 
-func (ci *cacheInstance) InstanceIntentDelete(ctx context.Context, intentName string) error {
-	return ci.store.IntentDelete(ctx, intentName)
+func (ci *cacheInstance) InstanceIntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error {
+	return ci.store.IntentDelete(ctx, intentName, IgnoreNonExisting)
 }
 
 func (ci *cacheInstance) InstanceIntentExists(ctx context.Context, intentName string) (bool, error) {
