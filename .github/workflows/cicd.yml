@@ -9,7 +9,7 @@ on:
 
 jobs:
   unittest:
-    runs-on: sdcio-action-runners
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
