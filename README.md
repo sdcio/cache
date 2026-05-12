@@ -1,12 +1,18 @@
-# cache
+# SDC cache
 
 ![sdc logo](https://docs.sdcio.dev/assets/logos/SDC-transparent-withname-100x133.png)
 
 This repository is part of Schema Driven Configuration (SDC)
 
-The paradigm of schema-driven API approaches is gaining increasing popularity as it facilitates programmatic interaction with systems by both machines and humans. While OpenAPI schema stands out as a widely embraced system, there are other notable schema approaches like YANG, among others. This project endeavors to empower users with a declarative and idempotent method for seamless interaction with API systems, providing a robust foundation for effective system configuration."
+The paradigm of schema-driven API approaches is gaining increasing popularity as it facilitates programmatic interaction
+with systems by both machines and humans. While OpenAPI schema stands out as a widely embraced system, there are other
+notable schema approaches like YANG, among others. This project endeavors to empower users with a declarative and
+idempotent method for seamless interaction with API systems, providing a robust foundation for effective system
+configuration."
 
-The cache component manages multiple datastores, including Config, State, and Intended, along with Intent metadata. It offers the option for persistent data storage, complemented by a gRPC API for seamless interaction. Additionally, the cache component provides a derived Command Line Interface (CLI) for user-friendly access and configuration.
+The cache component manages multiple datastores, including Config, State, and Intended, along with Intent metadata. It
+offers the option for persistent data storage, complemented by a gRPC API for seamless interaction. Additionally, the
+cache component provides a derived Command Line Interface (CLI) for user-friendly access and configuration.
 
 ## Join us
 
