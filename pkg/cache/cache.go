@@ -64,7 +64,9 @@ func (c *Cache) InstanceClose(ctx context.Context, cacheInstanceName string) err
 		return fmt.Errorf("%w: %s", ErrorCacheInstanceNotFound, cacheInstanceName)
 	}
 
-	ci.Close()
+	if err := ci.Close(); err != nil {
+		return err
+	}
 	delete(c.instances, cacheInstanceName)
 
 	return nil

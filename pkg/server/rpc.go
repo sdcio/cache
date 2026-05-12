@@ -81,7 +81,9 @@ func (s *Server) InstanceIntentGet(ctx context.Context, req *cachepb.InstanceInt
 
 	// enable compression on large messages
 	if len(intent) > 1000000 {
-		grpc.SetHeader(ctx, metadata.Pairs("grpc-encoding", gzip.Name))
+		if err := grpc.SetHeader(ctx, metadata.Pairs("grpc-encoding", gzip.Name)); err != nil {
+			return nil, err
+		}
 	}
 
 	return &cachepb.InstanceIntentGetResponse{Intent: intent}, nil
