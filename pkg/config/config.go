@@ -22,7 +22,7 @@ import (
 	"os"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	logf "github.com/sdcio/logger"
 	"gopkg.in/yaml.v2"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 )
@@ -160,7 +160,7 @@ func (t *TLS) NewConfig(ctx context.Context) (*tls.Config, error) {
 
 		go func() {
 			if err := certWatcher.Start(ctx); err != nil {
-				log.Errorf("certificate watcher error: %v", err)
+				logf.FromContext(ctx).Error(err, "certificate watcher error")
 			}
 		}()
 		tlsCfg.GetCertificate = certWatcher.GetCertificate

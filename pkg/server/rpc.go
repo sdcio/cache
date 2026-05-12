@@ -22,7 +22,7 @@ import (
 	"github.com/sdcio/cache/pkg/cache"
 	"github.com/sdcio/cache/pkg/types"
 	"github.com/sdcio/cache/proto/cachepb"
-	log "github.com/sirupsen/logrus"
+	"github.com/sdcio/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding/gzip"
@@ -138,6 +138,7 @@ func (s *Server) InstanceIntentsGetAll(req *cachepb.InstanceIntentGetAllRequest,
 	}
 
 	ctx := stream.Context()
+	log := logger.FromContext(ctx).WithValues("cache-instance", req.GetCacheInstanceName())
 
 	// Create buffered channels to prevent blocking
 	intentChan := make(chan *types.Intent, 10)
@@ -149,17 +150,17 @@ func (s *Server) InstanceIntentsGetAll(req *cachepb.InstanceIntentGetAllRequest,
 		select {
 		case err := <-errChan:
 			if err != nil {
-				log.Errorf("cache %s streaming error: %v", req.GetCacheInstanceName(), err)
+				log.Error(err, "streaming error")
 				return fmt.Errorf("streaming error: %w", err)
 			}
 		case <-ctx.Done():
-			log.Errorf("cache %s streaming canceled: %v", req.GetCacheInstanceName(), ctx.Err())
+			log.Error(ctx.Err(), "streaming canceled")
 			return fmt.Errorf("streaming canceled: %v", ctx.Err())
 		case intent, ok := <-intentChan:
 			if !ok {
 				return nil
 			}
-			log.Debugf("cache %s sending intent: %s\n", req.GetCacheInstanceName(), intent.Name())
+			log.V(logger.VDebug).Info("sending intent", "intent-name", intent.Name())
 			err := stream.Send(&cachepb.InstanceIntentGetResponse{IntentName: intent.Name(), Intent: intent.Data()})
 			if err != nil {
 				return err

@@ -3,20 +3,21 @@ module github.com/sdcio/cache
 go 1.25.0
 
 require (
+	github.com/dgraph-io/badger/v4 v4.8.0
+	github.com/go-logr/logr v1.4.3
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/prometheus/client_golang v1.20.5
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sdcio/logger v0.0.3
 	github.com/spf13/pflag v1.0.6
 	google.golang.org/grpc v1.68.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v2 v2.4.0
 	sigs.k8s.io/controller-runtime v0.19.3
 )
-
-require github.com/dgraph-io/badger/v4 v4.8.0
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -26,7 +27,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
@@ -36,7 +36,6 @@ require (
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/imdario/mergo v0.3.15 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

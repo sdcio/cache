@@ -18,10 +18,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/go-logr/logr"
+	"github.com/sdcio/logger"
 	"github.com/spf13/pflag"
 
 	"github.com/sdcio/cache/pkg/config"
@@ -48,40 +50,49 @@ func main() {
 		return
 	}
 
-	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
-	log.SetLevel(log.InfoLevel)
+	slogOpts := &slog.HandlerOptions{
+		Level:       slog.LevelInfo,
+		ReplaceAttr: logger.ReplaceTimeAttr,
+	}
 	if debug {
-		log.SetLevel(log.DebugLevel)
+		slogOpts.Level = slog.Level(-logger.VDebug)
 	}
 	if trace {
-		log.SetLevel(log.TraceLevel)
+		slogOpts.Level = slog.Level(-logger.VTrace)
 	}
+
+	log := logr.FromSlogHandler(slog.NewJSONHandler(os.Stdout, slogOpts))
+	logger.SetDefaultLogger(log)
+	ctx := logger.IntoContext(context.TODO(), log) // TODO:
+
 	var s *server.Server
 
 START:
 	if s != nil {
-		s.Stop()
+		s.Stop(ctx)
 	}
 	cfg, err := config.New(configFile)
 	if err != nil {
-		log.Errorf("failed to read config: %v", err)
+		log.Error(err, "failed to read config")
 		os.Exit(1)
 	}
-	b, _ := json.MarshalIndent(cfg, "", " ")
-	log.Infof("\n%s", string(b))
-
-	ctx := context.TODO() // TODO:
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		log.Error(err, "failed to marshal config")
+		os.Exit(1)
+	}
+	log.Info("read config", "config", string(b))
 
 	s, err = server.NewServer(ctx, cfg)
 	if err != nil {
-		log.Errorf("failed to create server: %v", err)
+		log.Error(err, "failed to create server")
 		time.Sleep(time.Second)
 		goto START
 	}
 
 	err = s.Start(ctx)
 	if err != nil {
-		log.Errorf("failed to run server: %v", err)
+		log.Error(err, "failed to run server")
 		time.Sleep(time.Second)
 		goto START
 	}
