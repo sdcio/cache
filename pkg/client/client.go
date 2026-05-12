@@ -69,9 +69,6 @@ func New(ctx context.Context, ccfg *ClientConfig) (*Client, error) {
 		ccfg.Timeout = defaultTimeout
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, ccfg.Timeout)
-	defer cancel()
-
 	cc, err := grpc.NewClient(ccfg.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	if err != nil {

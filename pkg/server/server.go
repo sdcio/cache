@@ -147,7 +147,9 @@ func (s *Server) ServeHTTP() {
 func (s *Server) Stop() {
 	s.srv.Stop()
 	if s.httpSrv != nil {
-		s.httpSrv.Shutdown(context.TODO())
+		if err := s.httpSrv.Shutdown(context.TODO()); err != nil {
+			log.Error(err)
+		}
 	}
 	err := s.cache.Close()
 	log.Error(err)
