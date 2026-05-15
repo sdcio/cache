@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -32,7 +33,7 @@ import (
 	"github.com/sdcio/cache/pkg/store/badgerdb"
 	"github.com/sdcio/cache/pkg/store/filesystem"
 	"github.com/sdcio/cache/proto/cachepb"
-	log "github.com/sirupsen/logrus"
+	logf "github.com/sdcio/logger"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -66,17 +67,23 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			defer cfn()
 			return handler(ctx, req)
 		},
+		contextLoggingInterceptor(ctx),
+	}
+
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		contextLoggingServerStreamInterceptor(ctx),
 	}
 
 	if cfg.Prometheus != nil {
 		grpcMetrics := grpc_prometheus.NewServerMetrics()
-		opts = append(opts,
-			grpc.StreamInterceptor(grpcMetrics.StreamServerInterceptor()),
-		)
+		streamInterceptors = append(streamInterceptors, grpcMetrics.StreamServerInterceptor())
 		unaryInterceptors = append(unaryInterceptors, grpcMetrics.UnaryServerInterceptor())
 		s.reg.MustRegister(grpcMetrics)
 	}
-	opts = append(opts, grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)))
+	opts = append(opts,
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(unaryInterceptors...)),
+		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(streamInterceptors...)),
+	)
 	if cfg.GRPCServer.TLS != nil {
 		tlsCfg, err := cfg.GRPCServer.TLS.NewConfig(ctx)
 		if err != nil {
@@ -116,9 +123,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Infof("running gRPC server on %s", s.cfg.GRPCServer.Address)
+	logf.FromContext(ctx).Info("running gRPC server", "address", s.cfg.GRPCServer.Address)
 	if s.cfg.Prometheus != nil {
-		go s.ServeHTTP()
+		go s.ServeHTTP(ctx)
 	}
 	err = s.srv.Serve(l)
 	if err != nil {
@@ -127,7 +134,8 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) ServeHTTP() {
+func (s *Server) ServeHTTP(ctx context.Context) {
+	log := logf.FromContext(ctx)
 	s.router.Handle("/metrics", promhttp.HandlerFor(s.reg, promhttp.HandlerOpts{}))
 	s.reg.MustRegister(collectors.NewGoCollector())
 	s.reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -137,20 +145,43 @@ func (s *Server) ServeHTTP() {
 		ReadTimeout:  time.Minute,
 		WriteTimeout: time.Minute,
 	}
-	log.Infof("running prometheus endpoint on %s", s.cfg.Prometheus.Address)
+	log.Info("running prometheus endpoint", "address", s.cfg.Prometheus.Address)
 	err := s.httpSrv.ListenAndServe()
 	if err != nil {
-		log.Errorf("HTTP server stopped: %v", err)
+		log.Error(err, "HTTP server stopped")
 	}
 }
 
-func (s *Server) Stop() {
+func (s *Server) Stop(ctx context.Context) {
+	log := logf.FromContext(ctx)
 	s.srv.Stop()
 	if s.httpSrv != nil {
 		if err := s.httpSrv.Shutdown(context.TODO()); err != nil {
-			log.Error(err)
+			log.Error(err, "HTTP server shutdown")
 		}
 	}
-	err := s.cache.Close()
-	log.Error(err)
+	if err := s.cache.Close(); err != nil {
+		log.Error(err, "failed to close cache")
+	}
+}
+
+func contextLoggingInterceptor(logCtx context.Context) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		uuidString := uuid.New().String()
+		log := logf.FromContext(logCtx).WithValues("grpc-request-uuid", uuidString)
+		ctx = logf.IntoContext(ctx, log)
+
+		return handler(ctx, req)
+	}
+}
+
+func contextLoggingServerStreamInterceptor(logCtx context.Context) grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		uuidString := uuid.New().String()
+		log := logf.FromContext(logCtx).WithValues("grpc-request-uuid", uuidString)
+		wss := grpc_middleware.WrapServerStream(ss)
+		wss.WrappedContext = logf.IntoContext(wss.WrappedContext, log)
+
+		return handler(srv, wss)
+	}
 }
