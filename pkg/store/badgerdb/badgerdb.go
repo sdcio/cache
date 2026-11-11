@@ -143,29 +143,38 @@ func (b *badgerDB) IntentGetAll(ctx context.Context, excludeIntentNames []string
 	defer close(intentChan)
 	defer close(errChan)
 
+	if err := b.intentGetAll(ctx, excludeIntentNames, intentChan); err != nil {
+		select {
+		case errChan <- err:
+		case <-ctx.Done():
+		}
+	}
+}
+
+func (b *badgerDB) intentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent) error {
 	intentNames, err := b.IntentsList(ctx)
 	if err != nil {
-		errChan <- err
-		return
+		return err
 	}
 
 	for _, intentName := range intentNames {
 		if slices.Contains(excludeIntentNames, intentName) {
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("streaming canceled: %v", err)
+		}
+		data, err := b.IntentGet(ctx, intentName)
+		if err != nil {
+			return err
+		}
 		select {
-		case <-ctx.Done(): // Check for cancellation or timeout
-			errChan <- fmt.Errorf("streaming canceled: %v", ctx.Err())
-			return
-		default:
-			data, err := b.IntentGet(ctx, intentName)
-			if err != nil {
-				errChan <- err
-				return
-			}
-			intentChan <- types.NewIntent(intentName, data)
+		case intentChan <- types.NewIntent(intentName, data):
+		case <-ctx.Done():
+			return fmt.Errorf("streaming canceled: %v", ctx.Err())
 		}
 	}
+	return nil
 }
 
 func (b *badgerDB) Close() error {

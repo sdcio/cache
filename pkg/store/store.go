@@ -25,6 +25,10 @@ type Store interface {
 	IntentExists(ctx context.Context, intentName string) (bool, error)
 	IntentsList(ctx context.Context) ([]string, error)
 	IntentGet(ctx context.Context, intentName string) ([]byte, error)
+	// IntentGetAll streams all intents not in excludeIntentNames to intentChan and sends at most one error to errChan.
+	// It always closes both channels before returning, errChan first: once intentChan is closed, errChan is closed
+	// too and can be drained without blocking to pick up a buffered error.
+	// Sends are abandoned once ctx is done, so a cancelled stream may end without an error; check ctx.Err().
 	IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error)
 	IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error
 	// Delete the Store. Implicitly closes store

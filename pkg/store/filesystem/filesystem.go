@@ -65,35 +65,49 @@ func (f *filesystem) IntentGet(ctx context.Context, intentName string) ([]byte, 
 }
 
 func (f *filesystem) IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
-	f.m.Lock()
-	defer f.m.Unlock()
-
 	defer close(intentChan)
 	defer close(errChan)
 
+	if err := f.intentGetAll(ctx, excludeIntentNames, intentChan); err != nil {
+		select {
+		case errChan <- err:
+		case <-ctx.Done():
+		}
+	}
+}
+
+// intentGetAll never holds f.m while sending, so a stalled consumer cannot block the store.
+func (f *filesystem) intentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent) error {
+	f.m.Lock()
 	intentNames, err := f.intentsList()
+	f.m.Unlock()
 	if err != nil {
-		errChan <- err
-		return
+		return err
 	}
 
 	for _, intentName := range intentNames {
 		if slices.Contains(excludeIntentNames, intentName) {
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("streaming canceled: %v", err)
+		}
+		f.m.Lock()
+		data, err := os.ReadFile(f.getIntentDataPath(intentName))
+		f.m.Unlock()
+		if errors.Is(err, os.ErrNotExist) {
+			continue // deleted since listing
+		}
+		if err != nil {
+			return err
+		}
 		select {
-		case <-ctx.Done(): // Check for cancellation or timeout
-			errChan <- fmt.Errorf("streaming canceled: %v", ctx.Err())
-			return
-		default:
-			data, err := f.intentGet(intentName)
-			if err != nil {
-				errChan <- err
-				return
-			}
-			intentChan <- types.NewIntent(intentName, data)
+		case intentChan <- types.NewIntent(intentName, data):
+		case <-ctx.Done():
+			return fmt.Errorf("streaming canceled: %v", ctx.Err())
 		}
 	}
+	return nil
 }
 
 // errorIntentNonExists requires the caller to hold f.m mutex
