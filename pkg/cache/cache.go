@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -11,8 +12,8 @@ import (
 
 type Cache struct {
 	instances map[string]*cacheInstance
-	// removing holds names taken out of instances whose store is still being closed or deleted.
-	removing       map[string]struct{}
+	// pending holds names with a create, close or delete in flight; the channel is closed when it ends.
+	pending        map[string]chan struct{}
 	instancesMutex *sync.RWMutex
 
 	storeInitializer func(instanceName string) (store.Store, error)
@@ -21,7 +22,7 @@ type Cache struct {
 func NewCache(storeInitializer func(instanceName string) (store.Store, error)) (*Cache, error) {
 	c := &Cache{
 		instances:        map[string]*cacheInstance{},
-		removing:         map[string]struct{}{},
+		pending:          map[string]chan struct{}{},
 		storeInitializer: storeInitializer,
 		instancesMutex:   &sync.RWMutex{},
 	}
@@ -40,48 +41,75 @@ func (c *Cache) getCacheInstance(cacheName string) (*cacheInstance, error) {
 }
 
 func (c *Cache) InstanceDelete(ctx context.Context, cacheInstanceName string) error {
-	return c.removeInstance(cacheInstanceName, func(ci *cacheInstance) error {
+	return c.removeInstance(ctx, cacheInstanceName, func(ci *cacheInstance) error {
 		return ci.Delete(ctx)
 	})
 }
 
 func (c *Cache) InstanceClose(ctx context.Context, cacheInstanceName string) error {
-	return c.removeInstance(cacheInstanceName, (*cacheInstance).Close)
+	return c.removeInstance(ctx, cacheInstanceName, (*cacheInstance).Close)
 }
 
-// removeInstance runs fn without holding instancesMutex so a stuck store cannot block other instances.
-// The name stays reserved until fn returns, and the instance is restored if fn fails.
-func (c *Cache) removeInstance(cacheInstanceName string, fn func(*cacheInstance) error) error {
+// reserve waits until no create, close or delete is in flight for name, then marks one as in flight.
+// Store I/O for name then runs without instancesMutex, so other instances never wait on it.
+func (c *Cache) reserve(ctx context.Context, name string) error {
 	c.instancesMutex.Lock()
-	ci, exists := c.instances[cacheInstanceName]
-	if !exists {
+	for {
+		done, busy := c.pending[name]
+		if !busy {
+			c.pending[name] = make(chan struct{})
+			c.instancesMutex.Unlock()
+			return nil
+		}
 		c.instancesMutex.Unlock()
-		return fmt.Errorf("%w: %s", ErrorCacheInstanceNotFound, cacheInstanceName)
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		c.instancesMutex.Lock()
 	}
-	delete(c.instances, cacheInstanceName)
-	c.removing[cacheInstanceName] = struct{}{}
-	c.instancesMutex.Unlock()
+}
 
-	err := fn(ci)
-
+func (c *Cache) release(name string) {
 	c.instancesMutex.Lock()
 	defer c.instancesMutex.Unlock()
-	delete(c.removing, cacheInstanceName)
-	if err != nil {
-		c.instances[cacheInstanceName] = ci
+	close(c.pending[name])
+	delete(c.pending, name)
+}
+
+// removeInstance unmaps the instance and runs fn on it; the instance is restored if fn fails.
+func (c *Cache) removeInstance(ctx context.Context, cacheInstanceName string, fn func(*cacheInstance) error) error {
+	if err := c.reserve(ctx, cacheInstanceName); err != nil {
+		return err
 	}
-	return err
+	defer c.release(cacheInstanceName)
+
+	c.instancesMutex.Lock()
+	ci, exists := c.instances[cacheInstanceName]
+	delete(c.instances, cacheInstanceName)
+	c.instancesMutex.Unlock()
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrorCacheInstanceNotFound, cacheInstanceName)
+	}
+
+	if err := fn(ci); err != nil {
+		c.instancesMutex.Lock()
+		c.instances[cacheInstanceName] = ci
+		c.instancesMutex.Unlock()
+		return err
+	}
+	return nil
 }
 
 func (c *Cache) InstanceCreate(ctx context.Context, cacheInstanceName string) error {
-	c.instancesMutex.Lock()
-	defer c.instancesMutex.Unlock()
-
-	if _, exists := c.instances[cacheInstanceName]; exists {
-		return fmt.Errorf("%w: %s", ErrorCacheInstanceAlreadyExists, cacheInstanceName)
+	if err := c.reserve(ctx, cacheInstanceName); err != nil {
+		return err
 	}
-	if _, removing := c.removing[cacheInstanceName]; removing {
-		return fmt.Errorf("%w: %s is still being removed", ErrorCacheInstanceAlreadyExists, cacheInstanceName)
+	defer c.release(cacheInstanceName)
+
+	if c.InstanceExists(ctx, cacheInstanceName) {
+		return fmt.Errorf("%w: %s", ErrorCacheInstanceAlreadyExists, cacheInstanceName)
 	}
 
 	store, err := c.storeInitializer(cacheInstanceName)
@@ -93,7 +121,9 @@ func (c *Cache) InstanceCreate(ctx context.Context, cacheInstanceName string) er
 		return err
 	}
 
+	c.instancesMutex.Lock()
 	c.instances[cacheInstanceName] = ci
+	c.instancesMutex.Unlock()
 
 	return nil
 }
@@ -160,29 +190,20 @@ func (c *Cache) InstanceIntentExists(ctx context.Context, cacheName string, inte
 func (c *Cache) InstanceIntentGetAll(ctx context.Context, cacheName string, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
 	ci, err := c.getCacheInstance(cacheName)
 	if err != nil {
-		// Honour the store.Store contract: close both channels, errChan first.
-		defer close(intentChan)
-		defer close(errChan)
-		select {
-		case errChan <- err:
-		case <-ctx.Done():
-		}
+		store.StreamIntents(ctx, nil, err, intentChan, errChan)
 		return
 	}
 	ci.InstanceIntentGetAll(ctx, excludeIntentNames, intentChan, errChan)
 }
 
+// Close closes every instance, continuing past failures; instances that fail to close stay registered.
 func (c *Cache) Close() error {
-	c.instancesMutex.Lock()
-	defer c.instancesMutex.Unlock()
-
-	for name, instance := range c.instances {
-		err := instance.Close()
-		if err != nil {
-			return err
+	var errs []error
+	for _, name := range c.InstancesList(context.Background()) {
+		err := c.InstanceClose(context.Background(), name)
+		if err != nil && !errors.Is(err, ErrorCacheInstanceNotFound) {
+			errs = append(errs, err)
 		}
-		delete(c.instances, name)
 	}
-
-	return nil
+	return errors.Join(errs...)
 }

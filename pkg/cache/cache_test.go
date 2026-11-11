@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
+	"maps"
 	"testing"
 	"time"
 
@@ -18,6 +18,14 @@ import (
 const testTimeout = 5 * time.Second
 
 type storeInit func(basepath string) (func(string) (store.Store, error), error)
+
+var stores = []struct {
+	name   string
+	initFn storeInit
+}{
+	{"filesystem", filesystem.PreConfigureFilesystemInitFunc},
+	{"badgerdb", badgerdb.PreconfigureBadgerDbInitFunc},
+}
 
 func newCache(t *testing.T, initFn storeInit) *cache.Cache {
 	t.Helper()
@@ -75,59 +83,58 @@ func receiveIntent(t *testing.T, intentChan <-chan *types.Intent, errChan <-chan
 }
 
 func TestInstanceIntentGetAllAbandonedConsumer(t *testing.T) {
-	tests := []struct {
-		store     string
-		initFn    storeInit
-		cancelCtx bool
-	}{
-		{"filesystem", filesystem.PreConfigureFilesystemInitFunc, true},
-		{"filesystem", filesystem.PreConfigureFilesystemInitFunc, false},
-		{"badgerdb", badgerdb.PreconfigureBadgerDbInitFunc, true},
-	}
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("%s/cancelCtx=%t", tt.store, tt.cancelCtx), func(t *testing.T) {
-			c := newCache(t, tt.initFn)
-			createInstanceWithIntents(t, c, "victim", 20)
-			createInstanceWithIntents(t, c, "other", 0)
+	for _, s := range stores {
+		for _, cancelCtx := range []bool{true, false} {
+			for _, errChanCap := range []int{0, 1} {
+				t.Run(fmt.Sprintf("%s/cancelCtx=%t/errChanCap=%d", s.name, cancelCtx, errChanCap), func(t *testing.T) {
+					c := newCache(t, s.initFn)
+					createInstanceWithIntents(t, c, "victim", 20)
+					createInstanceWithIntents(t, c, "other", 0)
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			intentChan := make(chan *types.Intent)
-			errChan := make(chan error)
-			producerDone := make(chan struct{})
-			go func() {
-				defer close(producerDone)
-				c.InstanceIntentGetAll(ctx, "victim", nil, intentChan, errChan)
-			}()
-			waitProducerExit := func() {
-				t.Helper()
-				select {
-				case <-producerDone:
-				case <-time.After(testTimeout):
-					t.Errorf("InstanceIntentGetAll did not return within %v after ctx was cancelled", testTimeout)
-				}
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					intentChan := make(chan *types.Intent)
+					errChan := make(chan error, errChanCap)
+					producerDone := make(chan struct{})
+					go func() {
+						defer close(producerDone)
+						c.InstanceIntentGetAll(ctx, "victim", nil, intentChan, errChan)
+					}()
+					waitProducerExit := func() {
+						t.Helper()
+						select {
+						case <-producerDone:
+						case <-time.After(testTimeout):
+							t.Errorf("InstanceIntentGetAll did not return within %v after ctx was cancelled", testTimeout)
+							return
+						}
+						if err := <-errChan; errChanCap > 0 && !errors.Is(err, context.Canceled) {
+							t.Errorf("buffered errChan got %v, want an error wrapping context.Canceled", err)
+						}
+					}
+
+					receiveIntent(t, intentChan, errChan)
+
+					// From here on, the consumer stops reading.
+					if cancelCtx {
+						cancel()
+						waitProducerExit()
+					}
+
+					returnsWithin(t, "InstanceDelete of the streamed instance", func() error {
+						return c.InstanceDelete(context.Background(), "victim")
+					})
+					returnsWithin(t, "InstanceIntentModify on another instance", func() error {
+						return c.InstanceIntentModify(context.Background(), "other", "intent", []byte("data"))
+					})
+
+					if !cancelCtx {
+						cancel()
+						waitProducerExit()
+					}
+				})
 			}
-
-			receiveIntent(t, intentChan, errChan)
-
-			// From here on, intentChan and errChan are never read again.
-			if tt.cancelCtx {
-				cancel()
-				waitProducerExit()
-			}
-
-			returnsWithin(t, "InstanceDelete of the streamed instance", func() error {
-				return c.InstanceDelete(context.Background(), "victim")
-			})
-			returnsWithin(t, "InstanceIntentModify on another instance", func() error {
-				return c.InstanceIntentModify(context.Background(), "other", "intent", []byte("data"))
-			})
-
-			if !tt.cancelCtx {
-				cancel()
-				waitProducerExit()
-			}
-		})
+		}
 	}
 }
 
@@ -164,26 +171,41 @@ func TestInstanceIntentGetAllMissingInstance(t *testing.T) {
 	}
 }
 
-func TestFilesystemIntentGetAllSkipsIntentDeletedMidStream(t *testing.T) {
-	c := newCache(t, filesystem.PreConfigureFilesystemInitFunc)
-	createInstanceWithIntents(t, c, "victim", 20)
+func TestInstanceIntentGetAllIsSnapshot(t *testing.T) {
+	for _, s := range stores {
+		t.Run(s.name, func(t *testing.T) {
+			c := newCache(t, s.initFn)
+			createInstanceWithIntents(t, c, "victim", 20)
 
-	intentChan := make(chan *types.Intent)
-	errChan := make(chan error, 1)
-	go c.InstanceIntentGetAll(t.Context(), "victim", nil, intentChan, errChan)
+			intentChan := make(chan *types.Intent)
+			errChan := make(chan error, 1)
+			go c.InstanceIntentGetAll(t.Context(), "victim", nil, intentChan, errChan)
 
-	got := []string{receiveIntent(t, intentChan, errChan).Name()}
-	returnsWithin(t, "InstanceIntentDelete during stream", func() error {
-		return c.InstanceIntentDelete(context.Background(), "victim", "intent-05", false)
-	})
-	for intent := range intentChan {
-		got = append(got, intent.Name())
-	}
-	if err := <-errChan; err != nil {
-		t.Fatalf("stream failed: %v", err)
-	}
-	if len(got) != 19 || slices.Contains(got, "intent-05") {
-		t.Errorf("got intents %v, want intent-00..intent-19 without intent-05", got)
+			first := receiveIntent(t, intentChan, errChan)
+			got := map[string]string{first.Name(): string(first.Data())}
+			returnsWithin(t, "intent writes during the stream", func() error {
+				ctx := context.Background()
+				return errors.Join(
+					c.InstanceIntentDelete(ctx, "victim", "intent-05", false),
+					c.InstanceIntentModify(ctx, "victim", "intent-10", []byte("modified")),
+					c.InstanceIntentModify(ctx, "victim", "intent-20", []byte("data")),
+				)
+			})
+			for intent := range intentChan {
+				got[intent.Name()] = string(intent.Data())
+			}
+			if err := <-errChan; err != nil {
+				t.Fatalf("stream failed: %v", err)
+			}
+
+			want := map[string]string{}
+			for i := range 20 {
+				want[fmt.Sprintf("intent-%02d", i)] = "data"
+			}
+			if !maps.Equal(got, want) {
+				t.Errorf("stream is not a snapshot taken when it started:\ngot  %v\nwant %v", got, want)
+			}
+		})
 	}
 }
 
@@ -202,7 +224,7 @@ func (s *blockingStore) Delete() error {
 
 func (s *blockingStore) Close() error { return nil }
 
-func TestInstanceCreateWhileDeleteInProgress(t *testing.T) {
+func TestInstanceCreateWaitsForDeleteOfSameName(t *testing.T) {
 	ctx := t.Context()
 	deleting := make(chan struct{})
 	release := make(chan struct{})
@@ -227,23 +249,67 @@ func TestInstanceCreateWhileDeleteInProgress(t *testing.T) {
 	returnsWithin(t, "InstanceCreate of another instance while a store delete is stuck", func() error {
 		return c.InstanceCreate(ctx, "b")
 	})
-	returnsWithin(t, "InstanceCreate of the instance being deleted", func() error {
-		if err := c.InstanceCreate(ctx, "a"); !errors.Is(err, cache.ErrorCacheInstanceAlreadyExists) {
-			return fmt.Errorf("got error %v, want %v", err, cache.ErrorCacheInstanceAlreadyExists)
+	returnsWithin(t, "InstanceCreate of the instance being deleted, with a short ctx", func() error {
+		shortCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		defer cancel()
+		if err := c.InstanceCreate(shortCtx, "a"); !errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("got error %v, want it to wait for the delete until ctx expires", err)
 		}
 		return nil
 	})
 
+	createErr := make(chan error, 1)
+	go func() { createErr <- c.InstanceCreate(ctx, "a") }()
+	close(release)
+	for what, ch := range map[string]chan error{"InstanceDelete": deleteErr, "InstanceCreate queued behind the delete": createErr} {
+		select {
+		case err := <-ch:
+			if err != nil {
+				t.Errorf("%s: %v", what, err)
+			}
+		case <-time.After(testTimeout):
+			t.Errorf("%s did not return after the store delete finished", what)
+		}
+	}
+	if !c.InstanceExists(ctx, "a") {
+		t.Error("instance a does not exist after delete and re-create")
+	}
+}
+
+func TestInstanceCreateDoesNotBlockOtherInstances(t *testing.T) {
+	ctx := t.Context()
+	initializing := make(chan struct{})
+	release := make(chan struct{})
+	c, err := cache.NewCache(func(name string) (store.Store, error) {
+		if name == "slow" {
+			close(initializing)
+			<-release
+		}
+		return &blockingStore{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	createErr := make(chan error, 1)
+	go func() { createErr <- c.InstanceCreate(ctx, "slow") }()
+	select {
+	case <-initializing:
+	case <-time.After(testTimeout):
+		t.Fatal("store initializer was not called")
+	}
+
+	returnsWithin(t, "InstanceCreate of another instance while a store is initializing", func() error {
+		return c.InstanceCreate(ctx, "fast")
+	})
+
 	close(release)
 	select {
-	case err := <-deleteErr:
+	case err := <-createErr:
 		if err != nil {
-			t.Fatalf("InstanceDelete: %v", err)
+			t.Fatalf("InstanceCreate: %v", err)
 		}
 	case <-time.After(testTimeout):
-		t.Fatal("InstanceDelete did not return after the store delete finished")
-	}
-	if err := c.InstanceCreate(ctx, "a"); err != nil {
-		t.Fatalf("InstanceCreate after delete finished: %v", err)
+		t.Fatal("InstanceCreate did not return after the store was initialized")
 	}
 }

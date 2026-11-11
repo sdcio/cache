@@ -16,6 +16,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sdcio/cache/pkg/types"
 )
@@ -25,14 +26,51 @@ type Store interface {
 	IntentExists(ctx context.Context, intentName string) (bool, error)
 	IntentsList(ctx context.Context) ([]string, error)
 	IntentGet(ctx context.Context, intentName string) ([]byte, error)
-	// IntentGetAll streams all intents not in excludeIntentNames to intentChan and sends at most one error to errChan.
-	// It always closes both channels before returning, errChan first: once intentChan is closed, errChan is closed
-	// too and can be drained without blocking to pick up a buffered error.
-	// Sends are abandoned once ctx is done, so a cancelled stream may end without an error; check ctx.Err().
+	// IntentGetAll streams a consistent snapshot of all intents not in excludeIntentNames to intentChan.
+	// It sends at most one error and closes both channels before returning, errChan first, so once intentChan
+	// is closed errChan can be drained without blocking. If errChan has capacity, the error (including a
+	// cancellation wrapping ctx.Err()) is always delivered; an unbuffered errChan loses it once ctx is done.
 	IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error)
 	IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error
 	// Delete the Store. Implicitly closes store
 	Delete() error
 	// Close the Store
 	Close() error
+}
+
+// StreamIntents delivers an IntentGetAll result (a snapshot or the error taking it) per the IntentGetAll contract.
+func StreamIntents(ctx context.Context, intents []*types.Intent, err error, intentChan chan<- *types.Intent, errChan chan<- error) {
+	defer close(intentChan)
+	defer close(errChan)
+
+	if err == nil {
+		err = sendIntents(ctx, intents, intentChan)
+	}
+	if err == nil {
+		return
+	}
+	// Try a non-blocking send first so a buffered or waiting errChan gets the error even when ctx is done.
+	select {
+	case errChan <- err:
+		return
+	default:
+	}
+	select {
+	case errChan <- err:
+	case <-ctx.Done():
+	}
+}
+
+func sendIntents(ctx context.Context, intents []*types.Intent, intentChan chan<- *types.Intent) error {
+	for _, intent := range intents {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("streaming canceled: %w", err)
+		}
+		select {
+		case intentChan <- intent:
+		case <-ctx.Done():
+			return fmt.Errorf("streaming canceled: %w", ctx.Err())
+		}
+	}
+	return nil
 }

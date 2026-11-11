@@ -140,41 +140,37 @@ func (b *badgerDB) IntentGet(ctx context.Context, intentName string) ([]byte, er
 }
 
 func (b *badgerDB) IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
-	defer close(intentChan)
-	defer close(errChan)
-
-	if err := b.intentGetAll(ctx, excludeIntentNames, intentChan); err != nil {
-		select {
-		case errChan <- err:
-		case <-ctx.Done():
-		}
-	}
+	intents, err := b.intentsSnapshot(ctx, excludeIntentNames)
+	store.StreamIntents(ctx, intents, err, intentChan, errChan)
 }
 
-func (b *badgerDB) intentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent) error {
-	intentNames, err := b.IntentsList(ctx)
+// intentsSnapshot reads all intents in one read transaction, so the result is consistent.
+func (b *badgerDB) intentsSnapshot(ctx context.Context, excludeIntentNames []string) ([]*types.Intent, error) {
+	var intents []*types.Intent
+	err := b.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		for it.Rewind(); it.ValidForPrefix(TypePrefixIntent); it.Next() {
+			item := it.Item()
+			intentName := string(item.Key()[1:])
+			if slices.Contains(excludeIntentNames, intentName) {
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("streaming canceled: %w", err)
+			}
+			data, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			intents = append(intents, types.NewIntent(intentName, data))
+		}
+		return nil
+	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	for _, intentName := range intentNames {
-		if slices.Contains(excludeIntentNames, intentName) {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("streaming canceled: %v", err)
-		}
-		data, err := b.IntentGet(ctx, intentName)
-		if err != nil {
-			return err
-		}
-		select {
-		case intentChan <- types.NewIntent(intentName, data):
-		case <-ctx.Done():
-			return fmt.Errorf("streaming canceled: %v", ctx.Err())
-		}
-	}
-	return nil
+	return intents, nil
 }
 
 func (b *badgerDB) Close() error {

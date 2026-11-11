@@ -13,9 +13,13 @@ import (
 	"github.com/sdcio/cache/pkg/types"
 )
 
+var errStoreClosed = errors.New("filesystem store is closed")
+
 type filesystem struct {
 	path string
 	m    *sync.Mutex
+	// closed stops stale handles from touching a path that a new store may now own; guarded by m.
+	closed bool
 }
 
 func NewFilesystemStore(path string) (*filesystem, error) {
@@ -34,6 +38,9 @@ func NewFilesystemStore(path string) (*filesystem, error) {
 func (f *filesystem) IntentModify(ctx context.Context, intentName string, data []byte) error {
 	f.m.Lock()
 	defer f.m.Unlock()
+	if f.closed {
+		return errStoreClosed
+	}
 
 	err := os.MkdirAll(f.getIntentPath(intentName), 0755)
 	if err != nil {
@@ -49,65 +56,62 @@ func (f *filesystem) IntentModify(ctx context.Context, intentName string, data [
 func (f *filesystem) IntentExists(ctx context.Context, intentName string) (bool, error) {
 	f.m.Lock()
 	defer f.m.Unlock()
+	if f.closed {
+		return false, errStoreClosed
+	}
 	return f.intentExists(intentName)
 }
 
 func (f *filesystem) IntentsList(ctx context.Context) ([]string, error) {
 	f.m.Lock()
 	defer f.m.Unlock()
+	if f.closed {
+		return nil, errStoreClosed
+	}
 	return f.intentsList()
 }
 
 func (f *filesystem) IntentGet(ctx context.Context, intentName string) ([]byte, error) {
 	f.m.Lock()
 	defer f.m.Unlock()
+	if f.closed {
+		return nil, errStoreClosed
+	}
 	return f.intentGet(intentName)
 }
 
 func (f *filesystem) IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
-	defer close(intentChan)
-	defer close(errChan)
-
-	if err := f.intentGetAll(ctx, excludeIntentNames, intentChan); err != nil {
-		select {
-		case errChan <- err:
-		case <-ctx.Done():
-		}
-	}
+	intents, err := f.intentsSnapshot(ctx, excludeIntentNames)
+	store.StreamIntents(ctx, intents, err, intentChan, errChan)
 }
 
-// intentGetAll never holds f.m while sending, so a stalled consumer cannot block the store.
-func (f *filesystem) intentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent) error {
+// intentsSnapshot reads all intents under one lock, so streaming them needs no lock.
+func (f *filesystem) intentsSnapshot(ctx context.Context, excludeIntentNames []string) ([]*types.Intent, error) {
 	f.m.Lock()
-	intentNames, err := f.intentsList()
-	f.m.Unlock()
-	if err != nil {
-		return err
+	defer f.m.Unlock()
+	if f.closed {
+		return nil, errStoreClosed
 	}
 
+	intentNames, err := f.intentsList()
+	if err != nil {
+		return nil, err
+	}
+	intents := make([]*types.Intent, 0, len(intentNames))
 	for _, intentName := range intentNames {
 		if slices.Contains(excludeIntentNames, intentName) {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("streaming canceled: %v", err)
+			return nil, fmt.Errorf("streaming canceled: %w", err)
 		}
-		f.m.Lock()
-		data, err := os.ReadFile(f.getIntentDataPath(intentName))
-		f.m.Unlock()
-		if errors.Is(err, os.ErrNotExist) {
-			continue // deleted since listing
-		}
+		data, err := f.intentGet(intentName)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		select {
-		case intentChan <- types.NewIntent(intentName, data):
-		case <-ctx.Done():
-			return fmt.Errorf("streaming canceled: %v", ctx.Err())
-		}
+		intents = append(intents, types.NewIntent(intentName, data))
 	}
-	return nil
+	return intents, nil
 }
 
 // errorIntentNonExists requires the caller to hold f.m mutex
@@ -158,6 +162,9 @@ func (f *filesystem) intentsList() ([]string, error) {
 func (f *filesystem) IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error {
 	f.m.Lock()
 	defer f.m.Unlock()
+	if f.closed {
+		return errStoreClosed
+	}
 	err := f.errorIntentNonExists(intentName)
 	if err != nil {
 		if IgnoreNonExisting {
@@ -172,11 +179,15 @@ func (f *filesystem) IntentDelete(ctx context.Context, intentName string, Ignore
 func (f *filesystem) Delete() error {
 	f.m.Lock()
 	defer f.m.Unlock()
+	f.closed = true
 	return os.RemoveAll(f.path)
 }
 
 // Close the Store
 func (f *filesystem) Close() error {
+	f.m.Lock()
+	defer f.m.Unlock()
+	f.closed = true
 	return nil
 }
 
