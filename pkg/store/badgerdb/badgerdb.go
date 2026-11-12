@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"sync"
 
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/sdcio/cache/pkg/store"
@@ -35,6 +36,10 @@ var (
 type badgerDB struct {
 	db   *badger.DB
 	path string
+	// streams is read-locked by each IntentGetAll so Close can wait for them after closing done.
+	streams   sync.RWMutex
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewBadgerDBStore(path string) (*badgerDB, error) {
@@ -45,6 +50,7 @@ func NewBadgerDBStore(path string) (*badgerDB, error) {
 	return &badgerDB{
 		db:   db,
 		path: path,
+		done: make(chan struct{}),
 	}, nil
 }
 
@@ -139,36 +145,43 @@ func (b *badgerDB) IntentGet(ctx context.Context, intentName string) ([]byte, er
 	return result, nil
 }
 
+// IntentGetAll streams from one read transaction, so the stream is consistent without blocking writes.
 func (b *badgerDB) IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
-	defer close(intentChan)
-	defer close(errChan)
+	store.FinishIntentStream(ctx, b.done, b.intentGetAll(ctx, excludeIntentNames, intentChan), intentChan, errChan)
+}
 
-	intentNames, err := b.IntentsList(ctx)
-	if err != nil {
-		errChan <- err
-		return
-	}
-
-	for _, intentName := range intentNames {
-		if slices.Contains(excludeIntentNames, intentName) {
-			continue
-		}
-		select {
-		case <-ctx.Done(): // Check for cancellation or timeout
-			errChan <- fmt.Errorf("streaming canceled: %v", ctx.Err())
-			return
-		default:
-			data, err := b.IntentGet(ctx, intentName)
-			if err != nil {
-				errChan <- err
-				return
+func (b *badgerDB) intentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent) error {
+	b.streams.RLock()
+	defer b.streams.RUnlock()
+	return b.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		for it.Rewind(); it.ValidForPrefix(TypePrefixIntent); it.Next() {
+			item := it.Item()
+			intentName := string(item.Key()[1:])
+			if slices.Contains(excludeIntentNames, intentName) {
+				continue
 			}
-			intentChan <- types.NewIntent(intentName, data)
+			data, err := item.ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+			select {
+			case intentChan <- types.NewIntent(intentName, data):
+			case <-ctx.Done():
+				return fmt.Errorf("streaming canceled: %w", ctx.Err())
+			case <-b.done:
+				return badger.ErrDBClosed
+			}
 		}
-	}
+		return nil
+	})
 }
 
 func (b *badgerDB) Close() error {
+	b.closeOnce.Do(func() { close(b.done) })
+	b.streams.Lock()
+	defer b.streams.Unlock()
 	return b.db.Close()
 }
 
