@@ -16,7 +16,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/sdcio/cache/pkg/types"
 )
@@ -26,10 +25,10 @@ type Store interface {
 	IntentExists(ctx context.Context, intentName string) (bool, error)
 	IntentsList(ctx context.Context) ([]string, error)
 	IntentGet(ctx context.Context, intentName string) ([]byte, error)
-	// IntentGetAll streams a consistent snapshot of all intents not in excludeIntentNames to intentChan.
-	// It sends at most one error and closes both channels before returning, errChan first, so once intentChan
-	// is closed errChan can be drained without blocking. If errChan has capacity, the error (including a
-	// cancellation wrapping ctx.Err()) is always delivered; an unbuffered errChan loses it once ctx is done.
+	// IntentGetAll streams a consistent view of all intents not in excludeIntentNames to intentChan.
+	// Every wait also selects on ctx and on the store closing, so it returns once either happens.
+	// It sends at most one error and closes both channels before returning, errChan first. A buffered
+	// errChan always receives the error, including a cancellation wrapping ctx.Err().
 	IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error)
 	IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error
 	// Delete the Store. Implicitly closes store
@@ -38,18 +37,15 @@ type Store interface {
 	Close() error
 }
 
-// StreamIntents delivers an IntentGetAll result (a snapshot or the error taking it) per the IntentGetAll contract.
-func StreamIntents(ctx context.Context, intents []*types.Intent, err error, intentChan chan<- *types.Intent, errChan chan<- error) {
+// FinishIntentStream ends an IntentGetAll stream: it delivers err, if any, and closes both channels.
+// done is the store's close signal; nil if there is none.
+func FinishIntentStream(ctx context.Context, done <-chan struct{}, err error, intentChan chan<- *types.Intent, errChan chan<- error) {
 	defer close(intentChan)
 	defer close(errChan)
-
-	if err == nil {
-		err = sendIntents(ctx, intents, intentChan)
-	}
 	if err == nil {
 		return
 	}
-	// Try a non-blocking send first so a buffered or waiting errChan gets the error even when ctx is done.
+	// A buffered or waiting errChan gets the error even if ctx is already done.
 	select {
 	case errChan <- err:
 		return
@@ -58,19 +54,6 @@ func StreamIntents(ctx context.Context, intents []*types.Intent, err error, inte
 	select {
 	case errChan <- err:
 	case <-ctx.Done():
+	case <-done:
 	}
-}
-
-func sendIntents(ctx context.Context, intents []*types.Intent, intentChan chan<- *types.Intent) error {
-	for _, intent := range intents {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("streaming canceled: %w", err)
-		}
-		select {
-		case intentChan <- intent:
-		case <-ctx.Done():
-			return fmt.Errorf("streaming canceled: %w", ctx.Err())
-		}
-	}
-	return nil
 }

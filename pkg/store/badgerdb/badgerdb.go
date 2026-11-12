@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"sync"
 
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/sdcio/cache/pkg/store"
@@ -35,6 +36,10 @@ var (
 type badgerDB struct {
 	db   *badger.DB
 	path string
+	// streams is read-locked by each IntentGetAll so Close can wait for them after closing done.
+	streams   sync.RWMutex
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewBadgerDBStore(path string) (*badgerDB, error) {
@@ -45,6 +50,7 @@ func NewBadgerDBStore(path string) (*badgerDB, error) {
 	return &badgerDB{
 		db:   db,
 		path: path,
+		done: make(chan struct{}),
 	}, nil
 }
 
@@ -139,15 +145,15 @@ func (b *badgerDB) IntentGet(ctx context.Context, intentName string) ([]byte, er
 	return result, nil
 }
 
+// IntentGetAll streams from one read transaction, so the stream is consistent without blocking writes.
 func (b *badgerDB) IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
-	intents, err := b.intentsSnapshot(ctx, excludeIntentNames)
-	store.StreamIntents(ctx, intents, err, intentChan, errChan)
+	store.FinishIntentStream(ctx, b.done, b.intentGetAll(ctx, excludeIntentNames, intentChan), intentChan, errChan)
 }
 
-// intentsSnapshot reads all intents in one read transaction, so the result is consistent.
-func (b *badgerDB) intentsSnapshot(ctx context.Context, excludeIntentNames []string) ([]*types.Intent, error) {
-	var intents []*types.Intent
-	err := b.db.View(func(txn *badger.Txn) error {
+func (b *badgerDB) intentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent) error {
+	b.streams.RLock()
+	defer b.streams.RUnlock()
+	return b.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		for it.Rewind(); it.ValidForPrefix(TypePrefixIntent); it.Next() {
@@ -156,24 +162,26 @@ func (b *badgerDB) intentsSnapshot(ctx context.Context, excludeIntentNames []str
 			if slices.Contains(excludeIntentNames, intentName) {
 				continue
 			}
-			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("streaming canceled: %w", err)
-			}
 			data, err := item.ValueCopy(nil)
 			if err != nil {
 				return err
 			}
-			intents = append(intents, types.NewIntent(intentName, data))
+			select {
+			case intentChan <- types.NewIntent(intentName, data):
+			case <-ctx.Done():
+				return fmt.Errorf("streaming canceled: %w", ctx.Err())
+			case <-b.done:
+				return badger.ErrDBClosed
+			}
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	return intents, nil
 }
 
 func (b *badgerDB) Close() error {
+	b.closeOnce.Do(func() { close(b.done) })
+	b.streams.Lock()
+	defer b.streams.Unlock()
 	return b.db.Close()
 }
 

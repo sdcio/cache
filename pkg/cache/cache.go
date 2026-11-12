@@ -190,7 +190,7 @@ func (c *Cache) InstanceIntentExists(ctx context.Context, cacheName string, inte
 func (c *Cache) InstanceIntentGetAll(ctx context.Context, cacheName string, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
 	ci, err := c.getCacheInstance(cacheName)
 	if err != nil {
-		store.StreamIntents(ctx, nil, err, intentChan, errChan)
+		store.FinishIntentStream(ctx, nil, err, intentChan, errChan)
 		return
 	}
 	ci.InstanceIntentGetAll(ctx, excludeIntentNames, intentChan, errChan)

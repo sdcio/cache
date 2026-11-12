@@ -17,15 +17,17 @@ var errStoreClosed = errors.New("filesystem store is closed")
 
 type filesystem struct {
 	path string
-	m    *sync.Mutex
-	// closed stops stale handles from touching a path that a new store may now own; guarded by m.
-	closed bool
+	// sem is a mutex (capacity 1) whose wait can be abandoned on ctx cancel or store close.
+	sem       chan struct{}
+	done      chan struct{} // closed by Close and Delete
+	closeOnce sync.Once
 }
 
 func NewFilesystemStore(path string) (*filesystem, error) {
 	f := &filesystem{
 		path: path,
-		m:    &sync.Mutex{},
+		sem:  make(chan struct{}, 1),
+		done: make(chan struct{}),
 	}
 	err := os.MkdirAll(f.getIntentsPath(), 0755)
 	if err != nil {
@@ -35,12 +37,39 @@ func NewFilesystemStore(path string) (*filesystem, error) {
 	return f, nil
 }
 
-func (f *filesystem) IntentModify(ctx context.Context, intentName string, data []byte) error {
-	f.m.Lock()
-	defer f.m.Unlock()
-	if f.closed {
+func (f *filesystem) lock(ctx context.Context) error {
+	select {
+	case f.sem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-f.done:
 		return errStoreClosed
 	}
+	// select picks randomly when sem and done are both ready, so check done again.
+	select {
+	case <-f.done:
+		f.unlock()
+		return errStoreClosed
+	default:
+		return nil
+	}
+}
+
+func (f *filesystem) unlock() {
+	<-f.sem
+}
+
+// shutdown ends current and future operations and returns holding the lock.
+func (f *filesystem) shutdown() {
+	f.closeOnce.Do(func() { close(f.done) })
+	f.sem <- struct{}{}
+}
+
+func (f *filesystem) IntentModify(ctx context.Context, intentName string, data []byte) error {
+	if err := f.lock(ctx); err != nil {
+		return err
+	}
+	defer f.unlock()
 
 	err := os.MkdirAll(f.getIntentPath(intentName), 0755)
 	if err != nil {
@@ -54,67 +83,64 @@ func (f *filesystem) IntentModify(ctx context.Context, intentName string, data [
 }
 
 func (f *filesystem) IntentExists(ctx context.Context, intentName string) (bool, error) {
-	f.m.Lock()
-	defer f.m.Unlock()
-	if f.closed {
-		return false, errStoreClosed
+	if err := f.lock(ctx); err != nil {
+		return false, err
 	}
+	defer f.unlock()
 	return f.intentExists(intentName)
 }
 
 func (f *filesystem) IntentsList(ctx context.Context) ([]string, error) {
-	f.m.Lock()
-	defer f.m.Unlock()
-	if f.closed {
-		return nil, errStoreClosed
+	if err := f.lock(ctx); err != nil {
+		return nil, err
 	}
+	defer f.unlock()
 	return f.intentsList()
 }
 
 func (f *filesystem) IntentGet(ctx context.Context, intentName string) ([]byte, error) {
-	f.m.Lock()
-	defer f.m.Unlock()
-	if f.closed {
-		return nil, errStoreClosed
+	if err := f.lock(ctx); err != nil {
+		return nil, err
 	}
+	defer f.unlock()
 	return f.intentGet(intentName)
 }
 
+// IntentGetAll holds the lock for the whole stream, so the stream is consistent and writes wait for it.
 func (f *filesystem) IntentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent, errChan chan<- error) {
-	intents, err := f.intentsSnapshot(ctx, excludeIntentNames)
-	store.StreamIntents(ctx, intents, err, intentChan, errChan)
+	store.FinishIntentStream(ctx, f.done, f.intentGetAll(ctx, excludeIntentNames, intentChan), intentChan, errChan)
 }
 
-// intentsSnapshot reads all intents under one lock, so streaming them needs no lock.
-func (f *filesystem) intentsSnapshot(ctx context.Context, excludeIntentNames []string) ([]*types.Intent, error) {
-	f.m.Lock()
-	defer f.m.Unlock()
-	if f.closed {
-		return nil, errStoreClosed
+func (f *filesystem) intentGetAll(ctx context.Context, excludeIntentNames []string, intentChan chan<- *types.Intent) error {
+	if err := f.lock(ctx); err != nil {
+		return err
 	}
+	defer f.unlock()
 
 	intentNames, err := f.intentsList()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	intents := make([]*types.Intent, 0, len(intentNames))
 	for _, intentName := range intentNames {
 		if slices.Contains(excludeIntentNames, intentName) {
 			continue
 		}
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("streaming canceled: %w", err)
-		}
 		data, err := f.intentGet(intentName)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		intents = append(intents, types.NewIntent(intentName, data))
+		select {
+		case intentChan <- types.NewIntent(intentName, data):
+		case <-ctx.Done():
+			return fmt.Errorf("streaming canceled: %w", ctx.Err())
+		case <-f.done:
+			return errStoreClosed
+		}
 	}
-	return intents, nil
+	return nil
 }
 
-// errorIntentNonExists requires the caller to hold f.m mutex
+// errorIntentNonExists requires the caller to hold the lock
 func (f *filesystem) errorIntentNonExists(intentName string) error {
 	exists, err := f.intentExists(intentName)
 	if err != nil {
@@ -126,7 +152,7 @@ func (f *filesystem) errorIntentNonExists(intentName string) error {
 	return nil
 }
 
-// intentExists requires the caller to hold f.m mutex
+// intentExists requires the caller to hold the lock
 func (f *filesystem) intentExists(intentName string) (bool, error) {
 	_, err := os.Stat(f.getIntentDataPath(intentName))
 
@@ -160,11 +186,10 @@ func (f *filesystem) intentsList() ([]string, error) {
 }
 
 func (f *filesystem) IntentDelete(ctx context.Context, intentName string, IgnoreNonExisting bool) error {
-	f.m.Lock()
-	defer f.m.Unlock()
-	if f.closed {
-		return errStoreClosed
+	if err := f.lock(ctx); err != nil {
+		return err
 	}
+	defer f.unlock()
 	err := f.errorIntentNonExists(intentName)
 	if err != nil {
 		if IgnoreNonExisting {
@@ -177,17 +202,15 @@ func (f *filesystem) IntentDelete(ctx context.Context, intentName string, Ignore
 
 // Delete the Store. Implicitly closes store
 func (f *filesystem) Delete() error {
-	f.m.Lock()
-	defer f.m.Unlock()
-	f.closed = true
+	f.shutdown()
+	defer f.unlock()
 	return os.RemoveAll(f.path)
 }
 
 // Close the Store
 func (f *filesystem) Close() error {
-	f.m.Lock()
-	defer f.m.Unlock()
-	f.closed = true
+	f.shutdown()
+	f.unlock()
 	return nil
 }
 

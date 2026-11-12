@@ -100,16 +100,22 @@ func TestInstanceIntentGetAllAbandonedConsumer(t *testing.T) {
 						defer close(producerDone)
 						c.InstanceIntentGetAll(ctx, "victim", nil, intentChan, errChan)
 					}()
-					waitProducerExit := func() {
+					waitProducerExit := func(want error) {
 						t.Helper()
 						select {
 						case <-producerDone:
 						case <-time.After(testTimeout):
-							t.Errorf("InstanceIntentGetAll did not return within %v after ctx was cancelled", testTimeout)
+							t.Errorf("InstanceIntentGetAll did not return within %v", testTimeout)
 							return
 						}
-						if err := <-errChan; errChanCap > 0 && !errors.Is(err, context.Canceled) {
-							t.Errorf("buffered errChan got %v, want an error wrapping context.Canceled", err)
+						if errChanCap == 0 {
+							return
+						}
+						switch err := <-errChan; {
+						case err == nil:
+							t.Error("stream ended early without an error on the buffered errChan")
+						case want != nil && !errors.Is(err, want):
+							t.Errorf("stream error %q does not wrap %v", err, want)
 						}
 					}
 
@@ -118,9 +124,18 @@ func TestInstanceIntentGetAllAbandonedConsumer(t *testing.T) {
 					// From here on, the consumer stops reading.
 					if cancelCtx {
 						cancel()
-						waitProducerExit()
+						waitProducerExit(context.Canceled)
 					}
 
+					returnsWithin(t, "InstanceIntentModify on the streamed instance with a short ctx", func() error {
+						shortCtx, cancelShort := context.WithTimeout(context.Background(), 50*time.Millisecond)
+						defer cancelShort()
+						err := c.InstanceIntentModify(shortCtx, "victim", "intent-00", []byte("new"))
+						if errors.Is(err, context.DeadlineExceeded) {
+							return nil // the filesystem store makes writes wait for the stream
+						}
+						return err
+					})
 					returnsWithin(t, "InstanceDelete of the streamed instance", func() error {
 						return c.InstanceDelete(context.Background(), "victim")
 					})
@@ -129,8 +144,8 @@ func TestInstanceIntentGetAllAbandonedConsumer(t *testing.T) {
 					})
 
 					if !cancelCtx {
-						cancel()
-						waitProducerExit()
+						// Deleting the instance ends the stream even though ctx is still live.
+						waitProducerExit(nil)
 					}
 				})
 			}
@@ -183,19 +198,29 @@ func TestInstanceIntentGetAllIsSnapshot(t *testing.T) {
 
 			first := receiveIntent(t, intentChan, errChan)
 			got := map[string]string{first.Name(): string(first.Data())}
-			returnsWithin(t, "intent writes during the stream", func() error {
+			// The filesystem store makes these wait for the stream; badgerdb applies them alongside it.
+			writesDone := make(chan error, 1)
+			go func() {
 				ctx := context.Background()
-				return errors.Join(
+				writesDone <- errors.Join(
 					c.InstanceIntentDelete(ctx, "victim", "intent-05", false),
 					c.InstanceIntentModify(ctx, "victim", "intent-10", []byte("modified")),
 					c.InstanceIntentModify(ctx, "victim", "intent-20", []byte("data")),
 				)
-			})
+			}()
 			for intent := range intentChan {
 				got[intent.Name()] = string(intent.Data())
 			}
 			if err := <-errChan; err != nil {
 				t.Fatalf("stream failed: %v", err)
+			}
+			select {
+			case err := <-writesDone:
+				if err != nil {
+					t.Errorf("writes during the stream: %v", err)
+				}
+			case <-time.After(testTimeout):
+				t.Error("writes made during the stream did not finish after it ended")
 			}
 
 			want := map[string]string{}
